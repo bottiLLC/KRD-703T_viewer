@@ -1,0 +1,140 @@
+=== app.py ===
+from __future__ import annotations
+import sys
+from pathlib import Path
+from types import MappingProxyType
+from typing import Final
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+_APP_ROOT: Final[Path] = Path(__file__).resolve().parent
+from backup_manager import get_backup_dir, run_backup, set_backup_dir
+from db import clear_db, get_default_db_path, init_db, insert_data, load_data, parse_csv_bytes
+METRIC_LABELS: Final[MappingProxyType[str, str]] = MappingProxyType({'体重 (kg)': 'weight', '体脂肪率 (%)': 'body_fat_pct', '体脂肪量 (kg)': 'body_fat_mass', '骨格筋率 (%)': 'skeletal_muscle_pct', '骨格筋量 (kg)': 'skeletal_muscle_mass', '内臓脂肪レベル': 'visceral_fat_level', 'BMI': 'bmi', '基礎代謝 (kcal)': 'bmr', '体年齢 (才)': 'body_age', '骨格筋率・両腕 (%)': 'skeletal_muscle_arms_pct', '骨格筋率・体幹 (%)': 'skeletal_muscle_trunk_pct', '骨格筋率・両脚 (%)': 'skeletal_muscle_legs_pct', '皮下脂肪率・全身 (%)': 'subcutaneous_fat_pct', '皮下脂肪率・両腕 (%)': 'subcutaneous_fat_arms_pct', '皮下脂肪率・体幹 (%)': 'subcutaneous_fat_trunk_pct', '皮下脂肪率・両脚 (%)': 'subcutaneous_fat_legs_pct'})
+METRIC_COLORS: Final[MappingProxyType[str, str]] = MappingProxyType({'weight': '#2563EB', 'body_fat_pct': '#DC2626', 'body_fat_mass': '#EA580C', 'skeletal_muscle_pct': '#16A34A', 'skeletal_muscle_mass': '#059669', 'visceral_fat_level': '#D97706', 'bmi': '#7C3AED', 'bmr': '#0284C7', 'body_age': '#64748B', 'skeletal_muscle_arms_pct': '#3B82F6', 'skeletal_muscle_trunk_pct': '#10B981', 'skeletal_muscle_legs_pct': '#F59E0B', 'subcutaneous_fat_pct': '#E11D48', 'subcutaneous_fat_arms_pct': '#FB7185', 'subcutaneous_fat_trunk_pct': '#F43F5E', 'subcutaneous_fat_legs_pct': '#BE123C'})
+SEGMENT_COLORS: Final[MappingProxyType[str, str]] = MappingProxyType({'両腕': '#3B82F6', '体幹': '#10B981', '両脚': '#F59E0B'})
+def calculate_delta(series: pd.Series[float]) -> float | None:
+    """Calculate difference between the latest and previous measurement."""
+def create_trend_chart(df: pd.DataFrame, selected_labels: list[str], show_ma: bool=False, ma_window: int=7) -> go.Figure:
+    """Generate interactive multi-metric time series line chart."""
+def create_segmental_radar_chart(muscle_arms: float, muscle_trunk: float, muscle_legs: float, fat_arms: float, fat_trunk: float, fat_legs: float) -> go.Figure:
+    """Generate radar (polar) chart for arms, trunk, and legs balance."""
+def create_segmental_history_chart(df: pd.DataFrame, col_prefix: str, title: str) -> go.Figure:
+    """Generate time series comparison of arms, trunk, and legs."""
+def create_composition_stack_chart(df: pd.DataFrame) -> go.Figure:
+    """Generate stacked area chart breaking down weight into muscle, fat, and others."""
+def render_backup_sidebar() -> None:
+    """Render standardized data protection backup trigger and receipts in sidebar."""
+def main() -> None:
+    """Streamlit application main orchestration entry point."""
+
+=== backup_manager.py ===
+from __future__ import annotations
+import json
+import os
+import shutil
+import tempfile
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+_CONFIG_FILE = Path('./data/backup_config.json')
+_DEFAULT_BACKUP_DIR = Path('./backups')
+def get_backup_dir() -> Path:
+    """Resolve the active backup destination directory."""
+def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
+    """Validate and persist the backup target directory into configuration."""
+def run_backup(app_name: str='app', source_dir: str='./data') -> dict[str, str | bool]:
+    """Execute an atomic, integrity-verified backup of the persistent data directory."""
+
+=== db.py ===
+from __future__ import annotations
+import io
+import sqlite3
+from pathlib import Path
+from types import MappingProxyType
+from typing import Final
+import pandas as pd
+DEFAULT_DATA_DIR: Final[str] = 'data'
+DEFAULT_DB_NAME: Final[str] = 'body_composition_raw.db'
+COLUMN_MAP: Final[MappingProxyType[str, str]] = MappingProxyType({'測定日': 'measured_at', 'タイムゾーン': 'timezone', '体重(kg)': 'weight', '体脂肪(%)': 'body_fat_pct', '体脂肪量(kg)': 'body_fat_mass', '内臓脂肪レベル': 'visceral_fat_level', '基礎代謝(kcal)': 'bmr', '骨格筋(%)': 'skeletal_muscle_pct', '骨格筋量(kg)': 'skeletal_muscle_mass', '骨格筋率（両腕）(%)': 'skeletal_muscle_arms_pct', '骨格筋率（体幹）(%)': 'skeletal_muscle_trunk_pct', '骨格筋率（両脚）(%)': 'skeletal_muscle_legs_pct', '皮下脂肪率(%)': 'subcutaneous_fat_pct', '皮下脂肪率（両腕）(%)': 'subcutaneous_fat_arms_pct', '皮下脂肪率（体幹）(%)': 'subcutaneous_fat_trunk_pct', '皮下脂肪率（両脚）(%)': 'subcutaneous_fat_legs_pct', 'BMI': 'bmi', '体年齢(才)': 'body_age', '機種': 'device'})
+ALL_COLUMNS: Final[tuple[str, ...]] = ('measured_at', 'timezone', 'weight', 'body_fat_pct', 'body_fat_mass', 'visceral_fat_level', 'bmr', 'skeletal_muscle_pct', 'skeletal_muscle_mass', 'skeletal_muscle_arms_pct', 'skeletal_muscle_trunk_pct', 'skeletal_muscle_legs_pct', 'subcutaneous_fat_pct', 'subcutaneous_fat_arms_pct', 'subcutaneous_fat_trunk_pct', 'subcutaneous_fat_legs_pct', 'bmi', 'body_age', 'device')
+def get_default_db_path() -> Path:
+    """Get deterministic database file path relative to current script inside ./data."""
+def init_db(db_path: Path) -> None:
+    """Initialize SQLite database with measurements schema if not exists."""
+def parse_csv_bytes(content: bytes) -> pd.DataFrame:
+    """Parse CSV raw bytes with encoding fallback (utf-8-sig, utf-8, cp932)."""
+def insert_data(df: pd.DataFrame, db_path: Path) -> int:
+    """Sanitize, map and persist body composition measurements into SQLite."""
+def load_data(db_path: Path) -> pd.DataFrame:
+    """Load all measurements ordered chronologically."""
+def clear_db(db_path: Path) -> None:
+    """Clear all records from the measurements table."""
+
+=== test_backup_manager.py ===
+from __future__ import annotations
+import json
+import os
+import zipfile
+from pathlib import Path
+from unittest.mock import patch
+import pytest
+from backup_manager import get_backup_dir, run_backup, set_backup_dir
+def test_get_backup_dir_from_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify get_backup_dir reads destination from persisted JSON configuration."""
+def test_get_backup_dir_corrupt_config_fallback_to_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify corrupted JSON config falls back gracefully to BACKUP_DIR env var."""
+def test_get_backup_dir_empty_key_fallback_to_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify config missing backup_dir key falls back to default ./backups."""
+def test_get_backup_dir_default_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify default fallback when config does not exist and env var is unset."""
+def test_set_backup_dir_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify set_backup_dir creates directory and persists config JSON."""
+def test_set_backup_dir_oserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify set_backup_dir reports failure when directory creation raises OSError."""
+def test_backup_source_dir_not_exists(tmp_path: Path) -> None:
+    """Verify backup failure when source directory does not exist."""
+def test_backup_source_dir_empty(tmp_path: Path) -> None:
+    """Verify backup failure when source directory is empty."""
+def test_backup_success_with_default_backups_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify successful backup creation and ensure backup_config.json is excluded."""
+def test_backup_success_with_large_payload_mb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify size formatting as MB when payload exceeds 1MB."""
+def test_backup_target_dir_creation_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify graceful error handling when destination directory cannot be created."""
+def test_backup_integrity_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify failure report when testzip integrity check detects corruption."""
+def test_backup_finalize_move_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify graceful error reporting when final shutil.move encounters an OSError."""
+
+=== test_db.py ===
+from __future__ import annotations
+from pathlib import Path
+import pandas as pd
+import pytest
+from db import clear_db, get_default_db_path, init_db, insert_data, load_data, parse_csv_bytes
+@pytest.fixture
+def temp_db_path(tmp_path: Path) -> Path:
+    """Fixture providing a temporary SQLite database path."""
+def test_get_default_db_path() -> None:
+    """Verify get_default_db_path returns expected path inside ./data."""
+def test_init_db_creates_table(temp_db_path: Path) -> None:
+    """Verify that init_db creates the database and table without error."""
+def test_parse_csv_bytes_with_utf8_and_bom() -> None:
+    """Verify parse_csv_bytes handles UTF-8 with BOM properly."""
+def test_parse_csv_bytes_with_cp932() -> None:
+    """Verify parse_csv_bytes handles CP932 encoded CSV."""
+def test_parse_csv_bytes_invalid_raises_value_error() -> None:
+    """Verify invalid binary raises ValueError."""
+def test_insert_data_and_prevent_duplicates(temp_db_path: Path) -> None:
+    """Verify insert_data ignores duplicate timestamps and inserts correctly."""
+def test_insert_data_missing_measured_at_raises_value_error(temp_db_path: Path) -> None:
+    """Verify missing 測定日 column raises ValueError."""
+def test_insert_empty_df_returns_zero(temp_db_path: Path) -> None:
+    """Verify inserting empty dataframe returns 0 without error."""
+def test_clear_db(temp_db_path: Path) -> None:
+    """Verify clear_db empties the table."""
+def test_krd_csv_ingestion(temp_db_path: Path) -> None:
+    """Verify ingesting full-specification Omron KRD-703T CSV payload."""
+
