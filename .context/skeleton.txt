@@ -28,7 +28,7 @@ def create_composition_stack_chart(df: pd.DataFrame) -> go.Figure:
 def render_backup_sidebar() -> None:
     """Render standardized data protection backup trigger and receipts in sidebar."""
 def main() -> None:
-    """Streamlit application main orchestration entry point."""
+    """Launch and orchestrate the Streamlit dashboard application."""
 
 === backup_manager.py ===
 """Atomic backup manager with integrity verification for persistent application data."""
@@ -40,8 +40,9 @@ import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
-_CONFIG_FILE = Path('./data/backup_config.json')
-_DEFAULT_BACKUP_DIR = Path('./backups')
+from typing import Final
+_CONFIG_FILE: Final[Path] = Path('./data/backup_config.json')
+_DEFAULT_BACKUP_DIR: Final[Path] = Path('./backups')
 def get_backup_dir() -> Path:
     """Resolve the active backup destination directory."""
 def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
@@ -121,7 +122,7 @@ import pytest
 from db import clear_db, get_default_db_path, init_db, insert_data, load_data, parse_csv_bytes
 @pytest.fixture
 def temp_db_path(tmp_path: Path) -> Path:
-    """Fixture providing a temporary SQLite database path."""
+    """Provide a temporary SQLite database path fixture."""
 def test_get_default_db_path() -> None:
     """Verify get_default_db_path returns expected path inside ./data."""
 def test_init_db_creates_table(temp_db_path: Path) -> None:

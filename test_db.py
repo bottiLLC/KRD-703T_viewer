@@ -19,7 +19,7 @@ from db import (
 
 @pytest.fixture
 def temp_db_path(tmp_path: Path) -> Path:
-    """Fixture providing a temporary SQLite database path."""
+    """Provide a temporary SQLite database path fixture."""
     return tmp_path / "test_measurements.db"
 
 

@@ -400,7 +400,7 @@ def render_backup_sidebar() -> None:
 
 
 def main() -> None:
-    """Streamlit application main orchestration entry point."""
+    """Launch and orchestrate the Streamlit dashboard application."""
     st.set_page_config(
         page_title="オムロン KRD-703T 体組成ダッシュボード",
         page_icon="⚖️",

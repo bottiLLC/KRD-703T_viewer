@@ -9,9 +9,10 @@ import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
-_CONFIG_FILE = Path("./data/backup_config.json")
-_DEFAULT_BACKUP_DIR = Path("./backups")
+_CONFIG_FILE: Final[Path] = Path("./data/backup_config.json")
+_DEFAULT_BACKUP_DIR: Final[Path] = Path("./backups")
 
 
 def get_backup_dir() -> Path:
