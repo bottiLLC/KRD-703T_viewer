@@ -1,3 +1,5 @@
+"""Unit test suite for backup manager operations and configuration handling."""
+
 from __future__ import annotations
 
 import json

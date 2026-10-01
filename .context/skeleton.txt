@@ -1,4 +1,5 @@
 === app.py ===
+"""Streamlit dashboard for Omron KRD-703T body composition analysis and visualization."""
 from __future__ import annotations
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ def main() -> None:
     """Streamlit application main orchestration entry point."""
 
 === backup_manager.py ===
+"""Atomic backup manager with integrity verification for persistent application data."""
 from __future__ import annotations
 import json
 import os
@@ -48,6 +50,7 @@ def run_backup(app_name: str='app', source_dir: str='./data') -> dict[str, str |
     """Execute an atomic, integrity-verified backup of the persistent data directory."""
 
 === db.py ===
+"""SQLite persistence layer and Omron KRD-703T CSV ingestion engine."""
 from __future__ import annotations
 import io
 import sqlite3
@@ -73,6 +76,7 @@ def clear_db(db_path: Path) -> None:
     """Clear all records from the measurements table."""
 
 === test_backup_manager.py ===
+"""Unit test suite for backup manager operations and configuration handling."""
 from __future__ import annotations
 import json
 import os
@@ -109,6 +113,7 @@ def test_backup_finalize_move_failure(tmp_path: Path, monkeypatch: pytest.Monkey
     """Verify graceful error reporting when final shutil.move encounters an OSError."""
 
 === test_db.py ===
+"""Unit test suite for SQLite persistence layer and Omron CSV parsing."""
 from __future__ import annotations
 from pathlib import Path
 import pandas as pd

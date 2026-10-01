@@ -1,3 +1,5 @@
+"""SQLite persistence layer and Omron KRD-703T CSV ingestion engine."""
+
 from __future__ import annotations
 
 import io

@@ -1,3 +1,5 @@
+"""Atomic backup manager with integrity verification for persistent application data."""
+
 from __future__ import annotations
 
 import json

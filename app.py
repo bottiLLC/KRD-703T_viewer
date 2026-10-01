@@ -1,3 +1,5 @@
+"""Streamlit dashboard for Omron KRD-703T body composition analysis and visualization."""
+
 from __future__ import annotations
 
 import sys
