@@ -1,6 +1,6 @@
 ![CI](https://github.com/bottiLLC/KRD-703T_viewer/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.14-blue.svg)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.64.0-FF4B4B.svg)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.66.0-FF4B4B.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 # KRD-703T Body Composition Viewer
@@ -14,18 +14,19 @@
 uv sync
 
 # 2. 自動テスト & 型検査の実行
-uv run pytest --cov=db --cov=backup_manager --cov-branch && uv run mypy --strict app.py db.py backup_manager.py test_db.py test_backup_manager.py
+uv run pytest --cov=db --cov=backup_manager --cov=charts --cov-branch && uv run mypy --strict app.py db.py backup_manager.py charts.py test_db.py test_backup_manager.py test_charts.py
 
 # 3. アプリケーション起動（または run.bat をダブルクリック）
 uv run streamlit run app.py
 ```
 
 ## Architecture & Features
-- **自動文字コード判定 & BOM耐性**: オムロンConnect由来のUTF-8（BOM付き含む）およびCP932（Shift-JIS）を自動判定してパース。
+- **Streamlit 1.66.0 適合 & 高速キャッシュ**: 非推奨APIを廃止し `width="stretch"` へ完全移行。`@st.cache_data` によるSQLite読み出しキャッシュ層を導入し、不要な再クエリを抑制。
+- **純粋可視化変換層の完全分離 (`charts.py`)**: Plotlyグラフ描画（レーダー・2軸推移・移動平均・積層内訳・散布図）および差分計算ロジックをStreamlit非依存の純粋関数群へ外科分離（単体C1分岐網羅率100%）。
+- **自動文字コード判定 & BOM耐性**: オムロンConnectアプリ等から出力されたUTF-8（BOM付き含む）およびCP932（Shift-JIS）を自動判定してパース。
 - **SQLite隔離永続化 & 冪等登録**: `./data`配下へのDB完全隔離と、重複測定日時（`measured_at`）に対する`INSERT OR IGNORE`競合解消。
-- **整合性検証付き自動バックアップ**: `backup_manager.py`によるZIP一時生成・`testzip()`完全性検証・アトミック退避、UIからの保存先（Google Drive等）変更・永続化およびUIレシート通知。
-- **KRD-703T部位別分析 & トレンド推移**: 両腕・体幹・両脚のバランスを可視化するレーダーチャートと7日〜30日移動平均付き2軸時系列プロット。
-- **測定ログ管理 & エクスポート**: 全レコードのソート・基本統計量表示・CSVエクスポート・DB初期化（全消去）を統合。
+- **整合性検証付き自動バックアップ**: `backup_manager.py`によるZIP一時生成・`testzip()`完全性検証・アトミック退避、UIからの保存先変更・永続化およびUIレシート通知。
+- **誤消去防止フェイルセーフ**: データベース初期化に対するチェックボックス確認付き2段階バリデーション機構を搭載。
 
 ## Environment Variables
 | Variable Name | Default Value | Description |

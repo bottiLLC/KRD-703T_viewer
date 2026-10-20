@@ -9,10 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.14", "3.13"]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,8 +18,8 @@ jobs:
         with:
           version: "latest"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python 3.14
+        run: uv python install 3.14
 
       - name: Install dependencies
         run: uv sync
@@ -34,7 +30,7 @@ jobs:
           uv run ruff format --check .
 
       - name: Type check (mypy --strict)
-        run: uv run mypy --strict app.py db.py backup_manager.py test_db.py test_backup_manager.py
+        run: uv run mypy --strict app.py db.py backup_manager.py charts.py test_db.py test_backup_manager.py test_charts.py
 
       - name: Run tests with branch coverage (pytest)
-        run: uv run pytest --cov=db --cov=backup_manager --cov-branch --cov-report=term-missing
+        run: uv run pytest --cov=db --cov=backup_manager --cov=charts --cov-branch --cov-report=term-missing
