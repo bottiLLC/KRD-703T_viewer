@@ -20,6 +20,11 @@ dev = [
     "ruff>=0.16.9",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["."]
+addopts = "--cov=db --cov=backup_manager --cov=charts --cov-branch --cov-report=term-missing"
+
 [tool.mypy]
 strict = true
 python_version = "3.14"

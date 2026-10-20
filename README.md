@@ -1,7 +1,4 @@
-![CI](https://github.com/bottiLLC/KRD-703T_viewer/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/Python-3.14-blue.svg)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.66.0-FF4B4B.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+[![CI](https://github.com/bottiLLC/KRD-703T_viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/bottiLLC/KRD-703T_viewer/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.14-blue.svg) ![Streamlit](https://img.shields.io/badge/Streamlit-1.66.0-FF4B4B.svg) ![Ruff](https://img.shields.io/badge/Ruff-0.16.9-orange.svg) ![Mypy](https://img.shields.io/badge/Mypy-Strict-blue.svg) ![Coverage](https://img.shields.io/badge/Coverage-100%25_C1-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 # KRD-703T Body Composition Viewer
 
