@@ -30,7 +30,7 @@ jobs:
           uv run ruff format --check .
 
       - name: Type check (mypy --strict)
-        run: uv run mypy --strict app.py db.py backup_manager.py charts.py test_db.py test_backup_manager.py test_charts.py
+        run: uv run mypy --strict app.py db.py backup_manager.py charts.py test_db.py test_backup_manager.py test_charts.py test_app.py
 
       - name: Run tests with branch coverage (pytest)
         run: uv run pytest --cov=db --cov=backup_manager --cov=charts --cov-branch --cov-report=term-missing

@@ -47,23 +47,48 @@ def get_cached_measurements(db_path_str: str) -> pd.DataFrame:
     return load_data(Path(db_path_str))
 
 
-def render_backup_sidebar() -> None:
-    """Render standardized data protection backup trigger and receipts in sidebar."""
+def render_header() -> None:
+    """Render standardized top-level header zone with title, objective, and version metadata."""
+    st.title("⚡ オムロン KRD-703T 体組成ダッシュボード")
+    st.caption(
+        "両手両足測定型体組成計 KRD-703T の測定ログ蓄積・部位別骨格筋/皮下脂肪バランス分析 | "
+        "v1.0.0 | DX Health Analytics"
+    )
+
+
+def render_sidebar() -> None:
+    """Render standardized sidebar zone strictly limited to settings, docs, and metadata."""
     with st.sidebar:
-        st.divider()
-        st.subheader("データ保護・バックアップ")
+        st.header("⚙️ システム設定")
 
-        current_dir = str(get_backup_dir())
-        new_dir = st.text_input("保存先フォルダ", value=current_dir)
-        if new_dir != current_dir and st.button("保存先パスを更新", width="stretch"):
-            save_res = set_backup_dir(new_dir)
-            if save_res["success"]:
-                st.success(save_res["message"])
-                st.rerun()
+        # 1. Backup Settings (enclosed in Form to prevent reruns on keystroke)
+        with st.form("backup_settings_form", clear_on_submit=False):
+            st.subheader("データ保護・バックアップ")
+            current_dir = str(get_backup_dir())
+            new_dir = st.text_input(
+                "保存先フォルダ",
+                value=current_dir,
+                help="自動バックアップZIPを保存するフォルダパス（相対パスまたは絶対パス）",
+            )
+            update_path_btn = st.form_submit_button("保存先パスを更新", type="secondary")
+
+        if update_path_btn:
+            if new_dir != current_dir:
+                save_res = set_backup_dir(new_dir)
+                if save_res["success"]:
+                    st.success(save_res["message"])
+                else:
+                    st.error(save_res["message"])
             else:
-                st.error(save_res["message"])
+                st.info("保存先パスに変更はありません。")
 
-        if st.button("今すぐバックアップを実行", width="stretch"):
+        # 2. Backup Execution
+        if st.button(
+            "今すぐバックアップを実行",
+            type="secondary",
+            width="stretch",
+            help="現在蓄積されている全測定データベースをZIP圧縮し整合性を検証して保存します。",
+        ):
             with st.spinner("圧縮・整合性検証中..."):
                 res = run_backup(app_name="krd703t")
             if res["success"]:
@@ -73,14 +98,95 @@ def render_backup_sidebar() -> None:
             else:
                 st.error(res["message"])
 
+        st.divider()
 
-def render_header_and_kpis(filtered_df: pd.DataFrame) -> None:
-    """Render title, metadata caption, and top 6 KPI metric cards.
+        # 3. KRD-703T Specs & Help Section
+        st.header("📖 仕様 & ヘルプ")
+        with st.expander("📌 KRD-703T 測定項目解説", expanded=False):
+            st.markdown(
+                """
+                - **両手両足測定**: 体幹部・四肢のインピーダンスを精密分離測定。
+                - **骨格筋率 (両腕/体幹/両脚)**: 各部位ごとの筋肉発達バランス。
+                - **皮下脂肪率 (両腕/体幹/両脚)**: 各部位の皮下脂肪蓄積レベル。
+                - **内臓脂肪レベル**: 1〜30段階での内臓脂肪断面積推計。
+                """
+            )
+
+        with st.expander("📥 CSVエクスポート手順", expanded=False):
+            st.markdown(
+                """
+                1. スマートフォンで「OMRON connect」アプリを開く。
+                2. メニューから「データ出力 / CSV」を選択。
+                3. 出力したCSVを本アプリの「データ同期」から投入してください。
+                """
+            )
+
+        st.divider()
+        st.caption("v1.0.0 | SQLite 3 Engine | KRD-703T DX Analytics")
+
+
+def render_empty_state(db_path: Path) -> None:
+    """Render workspace view when database contains zero measurement records.
+
+    Args:
+        db_path: Path to SQLite database file.
+    """
+    st.info(
+        "👋 測定データが登録されていません。オムロン Connect アプリから出力したCSVファイルを投入してください。"
+    )
+
+    with st.form("initial_upload_form", clear_on_submit=False):
+        st.subheader("1. 測定データ（CSV）の初期投入")
+        uploaded_file = st.file_uploader(
+            "オムロン Connect 出力 CSV ファイルを選択",
+            type=["csv"],
+            help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
+        )
+        submit = st.form_submit_button("CSVを取り込んで分析を開始", type="primary")
+
+    if submit:
+        if not uploaded_file:
+            st.error("エラー: CSVファイルが指定されていません。ファイルを選択してください。")
+            st.stop()
+
+        with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
+            content = uploaded_file.read()
+            try:
+                raw_df = parse_csv_bytes(content)
+                inserted = insert_data(raw_df, db_path)
+                get_cached_measurements.clear()
+                if inserted > 0:
+                    st.success(f"初期データ取り込み完了: {inserted} 件の測定ログを登録しました。")
+                    st.rerun()
+                else:
+                    st.warning("CSVファイル内に有効な測定ログが存在しませんでした。")
+            except (ValueError, KeyError) as exc:
+                st.error(
+                    f"取り込みエラー: {exc}\n\n"
+                    "【解決手順】\n"
+                    "1. オムロンConnectから出力した未加工CSVであることを確認してください。\n"
+                    "2. ファイルヘッダーに「測定日」および「体重(kg)」列が含まれるか確認してください。\n"
+                    "3. ファイルエンコーディングが UTF-8 または Shift-JIS (CP932) であることを確認してください。"
+                )
+                st.stop()
+
+    with st.expander("📖 オムロン Connect からのデータ出力方法", expanded=True):
+        st.markdown(
+            """
+            1. お手持ちのスマートフォンで **OMRON connect** アプリを起動します。
+            2. 画面右上のメニューまたは設定から **[データ出力]** または **[CSVファイル書き出し]** をタップします。
+            3. 出力期間（全期間推奨）を選択し、メールやAirDrop・クラウド経由でPCへ送信します。
+            4. 送信されたCSVファイルを上記のフォームから選択して投入してください。
+            """
+        )
+
+
+def render_summary_kpis(filtered_df: pd.DataFrame) -> None:
+    """Render metadata caption and top 6 KPI metric cards.
 
     Args:
         filtered_df: Chronologically sorted filtered measurement DataFrame.
     """
-    st.title("⚡ オムロン KRD-703T 体組成ダッシュボード")
     total_count = len(filtered_df)
     latest_ts = filtered_df["measured_at"].max().strftime("%Y/%m/%d %H:%M")
     st.caption(
@@ -160,6 +266,7 @@ def render_trend_tab(filtered_df: pd.DataFrame, show_ma: bool, ma_window: int) -
         "プロットする指標を選択（2つ選択時は左右2軸表示）",
         options=metric_options,
         default=["体重 (kg)", "体脂肪率 (%)"],
+        help="グラフにプロットする体組成指標を選択してください。2項目選択時は左右2軸表示になります。",
     )
     if selected_metrics:
         trend_fig = create_trend_chart(
@@ -272,18 +379,23 @@ def render_management_tab(filtered_df: pd.DataFrame, db_path: Path) -> None:
         mime="text/csv",
         type="secondary",
         width="stretch",
+        help="現在画面にフィルタ表示されている測定レコードをCSVファイルとしてダウンロードします。",
     )
 
     st.divider()
     st.markdown("##### データベース管理")
     with st.expander("⚙️ データベース初期化 (全データ消去)", expanded=False):
         st.warning("⚠️ SQLiteデータベース内の全測定レコードが完全に削除されます。")
-        confirmed = st.checkbox("全測定データの完全消去を確認しました")
+        confirmed = st.checkbox(
+            "全測定データの完全消去を確認しました",
+            help="チェックを入れるとデータベース消去ボタンが有効化されます。",
+        )
         if st.button(
             "🗑️ 全データを消去して初期化",
-            type="primary",
+            type="secondary",
             disabled=not confirmed,
             width="stretch",
+            help="データベースを完全にクリアし、初期状態に戻します（復元不可）。",
         ):
             clear_db(db_path)
             get_cached_measurements.clear()
@@ -299,65 +411,145 @@ def main() -> None:
         layout="wide",
     )
 
+    render_header()
+    render_sidebar()
+
     db_path = get_default_db_path()
     init_db(db_path)
 
-    with st.sidebar:
-        st.header("📥 データ投入・同期")
-        uploaded_file = st.file_uploader(
-            "オムロンのCSVファイルを投入",
-            type=["csv"],
-            help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
-        )
-        if uploaded_file is not None:
-            content = uploaded_file.read()
-            try:
-                raw_df = parse_csv_bytes(content)
-                inserted = insert_data(raw_df, db_path)
-                get_cached_measurements.clear()
-                st.success(f"同期完了: {inserted} 件の測定ログを新規保存しました。")
-            except (ValueError, pd.errors.ParserError, KeyError) as exc:
-                st.error(f"取り込みエラー: {exc}")
-
     df = get_cached_measurements(str(db_path))
 
+    # Empty Database State
     if df.empty:
-        render_backup_sidebar()
-        st.info(
-            "👋 測定データが登録されていません。サイドバーからCSVファイルをアップロードしてください。"
-        )
+        render_empty_state(db_path)
         st.stop()
 
-    with st.sidebar:
-        st.divider()
-        st.header("🔍 フィルタ設定")
-        min_date = df["measured_at"].min().date()
-        max_date = df["measured_at"].max().date()
+    # Populated Database State
+    min_date = df["measured_at"].min().date()
+    max_date = df["measured_at"].max().date()
 
-        date_range = st.date_input(
-            "測定期間フィルタ",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-        )
-        show_ma = st.checkbox("移動平均線を表示 (トレンド平滑化)", value=True)
-        ma_window = st.slider("移動平均の日数", min_value=3, max_value=30, value=7)
+    # Section 1: Incremental CSV synchronization (Expander + Form)
+    with st.expander("📥 測定データ（CSV）の同期・追加投入", expanded=False):
+        with st.form("incremental_upload_form", clear_on_submit=True):
+            inc_file = st.file_uploader(
+                "オムロンのCSVファイルを追加選択",
+                type=["csv"],
+                help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
+            )
+            submit_inc = st.form_submit_button("📥 CSVを取り込んで同期", type="secondary")
 
-    render_backup_sidebar()
+        if submit_inc:
+            if not inc_file:
+                st.error("エラー: 追加するCSVファイルを選択してください。")
+            else:
+                with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
+                    try:
+                        raw_df = parse_csv_bytes(inc_file.read())
+                        inserted = insert_data(raw_df, db_path)
+                        if inserted > 0:
+                            st.session_state["filter_end_date"] = raw_df["measured_at"].max().date()
+                            get_cached_measurements.clear()
+                            st.success(f"同期完了: {inserted} 件の測定ログを新規保存しました。")
+                            st.rerun()
+                        else:
+                            st.info(
+                                "新規データはありませんでした（全件登録済みの重複レコードです）。"
+                            )
+                    except (ValueError, KeyError) as exc:
+                        st.error(
+                            f"取り込みエラー: {exc}\n\n"
+                            "【解決手順】\n"
+                            "1. オムロンConnectから出力した未加工CSVであることを確認してください。\n"
+                            "2. ヘッダー行に「測定日」および「体重(kg)」が存在するか確認してください。"
+                        )
 
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date, end_date = date_range
-        mask = (df["measured_at"].dt.date >= start_date) & (df["measured_at"].dt.date <= end_date)
-        filtered_df = df[mask].copy()
-    else:
-        filtered_df = df.copy()
+    # Initialize filter state
+    if "filter_start_date" not in st.session_state:
+        st.session_state["filter_start_date"] = min_date
+    if "filter_end_date" not in st.session_state:
+        st.session_state["filter_end_date"] = max_date
+    if "filter_show_ma" not in st.session_state:
+        st.session_state["filter_show_ma"] = True
+    if "filter_ma_window" not in st.session_state:
+        st.session_state["filter_ma_window"] = 7
+
+    # Clamp session_state dates if db bounds shifted
+    st.session_state["filter_start_date"] = max(st.session_state["filter_start_date"], min_date)
+    st.session_state["filter_end_date"] = min(st.session_state["filter_end_date"], max_date)
+
+    # Section 2: Filter Controls Form (Resource Optimization)
+    with st.form("filter_controls_form"):
+        st.subheader("🔍 フィルター設定")
+        f_col1, f_col2, f_col3 = st.columns([2, 1, 1])
+
+        with f_col1:
+            date_val = st.date_input(
+                "測定期間フィルタ",
+                value=(st.session_state["filter_start_date"], st.session_state["filter_end_date"]),
+                min_value=min_date,
+                max_value=max_date,
+                help="表示・集計対象とする測定期間の開始日と終了日を選択してください。",
+            )
+
+        with f_col2:
+            show_ma_val = st.checkbox(
+                "移動平均線を表示 (トレンド平滑化)",
+                value=st.session_state["filter_show_ma"],
+                help="日々の体重・骨格筋率の細かな変動を平滑化し、長期トレンドを可視化します。",
+            )
+
+        with f_col3:
+            ma_window_val = st.slider(
+                "移動平均の日数",
+                min_value=3,
+                max_value=30,
+                value=st.session_state["filter_ma_window"],
+                help="移動平均の計算に用いるローリング日数（3〜30日）を指定します。",
+            )
+
+        b_col1, b_col2 = st.columns([1, 1])
+        with b_col1:
+            submit_filter = st.form_submit_button(
+                "🔍 フィルターを適用",
+                type="primary",
+                width="stretch",
+                help="指定した期間と移動平均設定を集計に反映します。",
+            )
+        with b_col2:
+            reset_filter = st.form_submit_button(
+                "🔄 期間を全期間にリセット",
+                type="secondary",
+                width="stretch",
+                help="期間フィルタを全期間、移動平均を初期値（7日）にリセットします。",
+            )
+
+    if reset_filter:
+        st.session_state["filter_start_date"] = min_date
+        st.session_state["filter_end_date"] = max_date
+        st.session_state["filter_show_ma"] = True
+        st.session_state["filter_ma_window"] = 7
+        st.rerun()
+
+    if submit_filter:
+        if isinstance(date_val, tuple) and len(date_val) == 2:
+            st.session_state["filter_start_date"], st.session_state["filter_end_date"] = date_val
+        st.session_state["filter_show_ma"] = show_ma_val
+        st.session_state["filter_ma_window"] = ma_window_val
+
+    # Apply active filter
+    active_start = st.session_state["filter_start_date"]
+    active_end = st.session_state["filter_end_date"]
+    mask = (df["measured_at"].dt.date >= active_start) & (df["measured_at"].dt.date <= active_end)
+    filtered_df = df[mask].copy()
 
     if filtered_df.empty:
         st.warning("指定された期間の測定データが存在しません。期間を変更してください。")
         st.stop()
 
-    render_header_and_kpis(filtered_df)
+    # Section 3: Summary KPIs
+    render_summary_kpis(filtered_df)
 
+    # Section 4: Analysis Tabs
     latest_row = filtered_df.iloc[-1]
     tab1, tab2, tab3, tab4 = st.tabs(
         [
@@ -369,7 +561,11 @@ def main() -> None:
     )
 
     with tab1:
-        render_trend_tab(filtered_df, show_ma=show_ma, ma_window=ma_window)
+        render_trend_tab(
+            filtered_df,
+            show_ma=st.session_state["filter_show_ma"],
+            ma_window=st.session_state["filter_ma_window"],
+        )
 
     with tab2:
         render_segmental_tab(filtered_df, latest_row=latest_row)
