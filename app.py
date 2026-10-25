@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import datetime
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 import pandas as pd
 import streamlit as st
 
-# Ensure project root is present in sys.path regardless of execution working directory
-_APP_ROOT: Final[Path] = Path(__file__).resolve().parent
-if str(_APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(_APP_ROOT))
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
 from charts import (
@@ -34,6 +35,16 @@ from db import (
 )
 
 
+@dataclass(frozen=True)
+class FilterCriteria:
+    """Immutable filter state contract."""
+
+    start_date: datetime.date
+    end_date: datetime.date
+    show_ma: bool
+    ma_window: int
+
+
 @st.cache_data
 def get_cached_measurements(db_path_str: str) -> pd.DataFrame:
     """Load all measurements from SQLite database with Streamlit caching.
@@ -49,7 +60,7 @@ def get_cached_measurements(db_path_str: str) -> pd.DataFrame:
 
 def render_header() -> None:
     """Render standardized top-level header zone with title, objective, and version metadata."""
-    st.title("⚡ オムロン KRD-703T 体組成ダッシュボード")
+    st.title("オムロン KRD-703T 体組成ダッシュボード")
     st.caption(
         "両手両足測定型体組成計 KRD-703T の測定ログ蓄積・部位別骨格筋/皮下脂肪バランス分析 | "
         "v1.0.0 | DX Health Analytics"
@@ -59,50 +70,34 @@ def render_header() -> None:
 def render_sidebar() -> None:
     """Render standardized sidebar zone strictly limited to settings, docs, and metadata."""
     with st.sidebar:
-        st.header("⚙️ システム設定")
-
-        # 1. Backup Settings (enclosed in Form to prevent reruns on keystroke)
-        with st.form("backup_settings_form", clear_on_submit=False):
-            st.subheader("データ保護・バックアップ")
-            current_dir = str(get_backup_dir())
-            new_dir = st.text_input(
-                "保存先フォルダ",
-                value=current_dir,
-                help="自動バックアップZIPを保存するフォルダパス（相対パスまたは絶対パス）",
-            )
-            update_path_btn = st.form_submit_button("保存先パスを更新", type="secondary")
-
-        if update_path_btn:
-            if new_dir != current_dir:
-                save_res = set_backup_dir(new_dir)
-                if save_res["success"]:
-                    st.success(save_res["message"])
-                else:
-                    st.error(save_res["message"])
-            else:
-                st.info("保存先パスに変更はありません。")
-
-        # 2. Backup Execution
-        if st.button(
-            "今すぐバックアップを実行",
-            type="secondary",
-            width="stretch",
-            help="現在蓄積されている全測定データベースをZIP圧縮し整合性を検証して保存します。",
+        st.header("システム設定")
+        st.divider()
+        st.subheader("データ保護・バックアップ")
+        current_dir = str(get_backup_dir())
+        new_dir = st.text_input("保存先フォルダ", value=current_dir)
+        if new_dir != current_dir and st.button(
+            "保存先パスを更新", icon=":material/save:", width="stretch"
         ):
+            save_res = set_backup_dir(new_dir)
+            if save_res["success"]:
+                st.toast(str(save_res["message"]), icon=":material/check_circle:")
+                st.rerun()
+            else:
+                st.error(str(save_res["message"]))
+
+        if st.button("今すぐバックアップを実行", icon=":material/backup:", width="stretch"):
             with st.spinner("圧縮・整合性検証中..."):
                 res = run_backup(app_name="krd703t")
             if res["success"]:
-                st.success(res["message"])
+                st.toast(str(res["message"]), icon=":material/check_circle:")
                 st.caption(f"完了日時: {res['timestamp']}")
                 st.caption(f"保存先: {res['destination']}")
             else:
-                st.error(res["message"])
+                st.error(str(res["message"]))
 
         st.divider()
-
-        # 3. KRD-703T Specs & Help Section
-        st.header("📖 仕様 & ヘルプ")
-        with st.expander("📌 KRD-703T 測定項目解説", expanded=False):
+        st.header("仕様 & ヘルプ")
+        with st.popover("KRD-703T 測定項目解説", icon=":material/help:"):
             st.markdown(
                 """
                 - **両手両足測定**: 体幹部・四肢のインピーダンスを精密分離測定。
@@ -112,7 +107,7 @@ def render_sidebar() -> None:
                 """
             )
 
-        with st.expander("📥 CSVエクスポート手順", expanded=False):
+        with st.popover("CSVエクスポート手順", icon=":material/description:"):
             st.markdown(
                 """
                 1. スマートフォンで「OMRON connect」アプリを開く。
@@ -132,17 +127,22 @@ def render_empty_state(db_path: Path) -> None:
         db_path: Path to SQLite database file.
     """
     st.info(
-        "👋 測定データが登録されていません。オムロン Connect アプリから出力したCSVファイルを投入してください。"
+        "測定データが登録されていません。オムロン Connect アプリから出力したCSVファイルを投入してください。"
     )
 
-    with st.form("initial_upload_form", clear_on_submit=False):
+    with st.form("initial_upload_form", clear_on_submit=False, border=True):
         st.subheader("1. 測定データ（CSV）の初期投入")
         uploaded_file = st.file_uploader(
             "オムロン Connect 出力 CSV ファイルを選択",
             type=["csv"],
             help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
         )
-        submit = st.form_submit_button("CSVを取り込んで分析を開始", type="primary")
+        submit = st.form_submit_button(
+            "CSVを取り込んで分析を開始",
+            icon=":material/upload_file:",
+            type="primary",
+            width="stretch",
+        )
 
     if submit:
         if not uploaded_file:
@@ -156,7 +156,10 @@ def render_empty_state(db_path: Path) -> None:
                 inserted = insert_data(raw_df, db_path)
                 get_cached_measurements.clear()
                 if inserted > 0:
-                    st.success(f"初期データ取り込み完了: {inserted} 件の測定ログを登録しました。")
+                    st.toast(
+                        f"初期データ取り込み完了: {inserted} 件の測定ログを登録しました。",
+                        icon=":material/check_circle:",
+                    )
                     st.rerun()
                 else:
                     st.warning("CSVファイル内に有効な測定ログが存在しませんでした。")
@@ -170,7 +173,7 @@ def render_empty_state(db_path: Path) -> None:
                 )
                 st.stop()
 
-    with st.expander("📖 オムロン Connect からのデータ出力方法", expanded=True):
+    with st.popover("オムロン Connect からのデータ出力方法", icon=":material/help:"):
         st.markdown(
             """
             1. お手持ちのスマートフォンで **OMRON connect** アプリを起動します。
@@ -190,68 +193,76 @@ def render_summary_kpis(filtered_df: pd.DataFrame) -> None:
     total_count = len(filtered_df)
     latest_ts = filtered_df["measured_at"].max().strftime("%Y/%m/%d %H:%M")
     st.caption(
-        f"📊 表示対象: **{total_count} 件** | 最新測定日時: **{latest_ts}** | 機種: **KRD-703T**"
+        f"表示対象: **{total_count} 件** | 最新測定日時: **{latest_ts}** | 機種: **KRD-703T**"
     )
 
-    st.subheader("📌 最新測定サマリー")
+    st.subheader("最新測定サマリー")
     latest_row = filtered_df.iloc[-1]
-    kpi_cols = st.columns(6)
+    with st.container(border=True):
+        kpi_cols = st.columns(6)
 
-    with kpi_cols[0]:
-        delta_wt = calculate_delta(filtered_df["weight"])
-        st.metric(
-            label="体重",
-            value=f"{float(latest_row['weight']):.2f} kg",
-            delta=f"{delta_wt:+.2f} kg" if delta_wt is not None else None,
-            delta_color="inverse",
-        )
+        with kpi_cols[0]:
+            delta_wt = calculate_delta(filtered_df["weight"])
+            st.metric(
+                label="体重",
+                value=f"{float(latest_row['weight']):.2f} kg",
+                delta=f"{delta_wt:+.2f} kg" if delta_wt is not None else None,
+                delta_color="inverse",
+                border=True,
+            )
 
-    with kpi_cols[1]:
-        delta_fat = calculate_delta(filtered_df["body_fat_pct"])
-        st.metric(
-            label="体脂肪率",
-            value=f"{float(latest_row['body_fat_pct']):.1f} %",
-            delta=f"{delta_fat:+.1f} %" if delta_fat is not None else None,
-            delta_color="inverse",
-        )
+        with kpi_cols[1]:
+            delta_fat = calculate_delta(filtered_df["body_fat_pct"])
+            st.metric(
+                label="体脂肪率",
+                value=f"{float(latest_row['body_fat_pct']):.1f} %",
+                delta=f"{delta_fat:+.1f} %" if delta_fat is not None else None,
+                delta_color="inverse",
+                border=True,
+            )
 
-    with kpi_cols[2]:
-        delta_muscle = calculate_delta(filtered_df["skeletal_muscle_pct"])
-        st.metric(
-            label="骨格筋率",
-            value=f"{float(latest_row['skeletal_muscle_pct']):.1f} %",
-            delta=f"{delta_muscle:+.1f} %" if delta_muscle is not None else None,
-            delta_color="normal",
-        )
+        with kpi_cols[2]:
+            delta_muscle = calculate_delta(filtered_df["skeletal_muscle_pct"])
+            st.metric(
+                label="骨格筋率",
+                value=f"{float(latest_row['skeletal_muscle_pct']):.1f} %",
+                delta=f"{delta_muscle:+.1f} %" if delta_muscle is not None else None,
+                delta_color="normal",
+                border=True,
+            )
 
-    with kpi_cols[3]:
-        delta_visc = calculate_delta(filtered_df["visceral_fat_level"])
-        st.metric(
-            label="内臓脂肪レベル",
-            value=f"{float(latest_row['visceral_fat_level']):.1f}",
-            delta=f"{delta_visc:+.1f}" if delta_visc is not None else None,
-            delta_color="inverse",
-        )
+        with kpi_cols[3]:
+            delta_visc = calculate_delta(filtered_df["visceral_fat_level"])
+            st.metric(
+                label="内臓脂肪レベル",
+                value=f"{float(latest_row['visceral_fat_level']):.1f}",
+                delta=f"{delta_visc:+.1f}" if delta_visc is not None else None,
+                delta_color="inverse",
+                border=True,
+            )
 
-    with kpi_cols[4]:
-        delta_bmi = calculate_delta(filtered_df["bmi"])
-        st.metric(
-            label="BMI",
-            value=f"{float(latest_row['bmi']):.1f}",
-            delta=f"{delta_bmi:+.1f}" if delta_bmi is not None else None,
-            delta_color="inverse",
-        )
+        with kpi_cols[4]:
+            delta_bmi = calculate_delta(filtered_df["bmi"])
+            st.metric(
+                label="BMI",
+                value=f"{float(latest_row['bmi']):.1f}",
+                delta=f"{delta_bmi:+.1f}" if delta_bmi is not None else None,
+                delta_color="inverse",
+                border=True,
+            )
 
-    with kpi_cols[5]:
-        delta_bmr = calculate_delta(filtered_df["bmr"].astype(float))
-        st.metric(
-            label="基礎代謝",
-            value=f"{int(latest_row['bmr'])} kcal",
-            delta=f"{delta_bmr:+.0f} kcal" if delta_bmr is not None else None,
-            delta_color="normal",
-        )
+        with kpi_cols[5]:
+            delta_bmr = calculate_delta(filtered_df["bmr"].astype(float))
+            st.metric(
+                label="基礎代謝",
+                value=f"{int(latest_row['bmr'])} kcal",
+                delta=f"{delta_bmr:+.0f} kcal" if delta_bmr is not None else None,
+                delta_color="normal",
+                border=True,
+            )
 
 
+@st.fragment
 def render_trend_tab(filtered_df: pd.DataFrame, show_ma: bool, ma_window: int) -> None:
     """Render Tab 1 for metric trend waveform and multi-axis visualization.
 
@@ -260,26 +271,28 @@ def render_trend_tab(filtered_df: pd.DataFrame, show_ma: bool, ma_window: int) -
         show_ma: Whether moving average lines should be rendered.
         ma_window: Rolling window size in days for moving average.
     """
-    st.markdown("#### 指標トレンド波形")
-    metric_options = list(METRIC_LABELS.keys())
-    selected_metrics = st.multiselect(
-        "プロットする指標を選択（2つ選択時は左右2軸表示）",
-        options=metric_options,
-        default=["体重 (kg)", "体脂肪率 (%)"],
-        help="グラフにプロットする体組成指標を選択してください。2項目選択時は左右2軸表示になります。",
-    )
-    if selected_metrics:
-        trend_fig = create_trend_chart(
-            filtered_df,
-            selected_metrics,
-            show_ma=show_ma,
-            ma_window=ma_window,
+    with st.container(border=True):
+        st.markdown("#### 指標トレンド波形")
+        metric_options = list(METRIC_LABELS.keys())
+        selected_metrics = st.multiselect(
+            "プロットする指標を選択（2つ選択時は左右2軸表示）",
+            options=metric_options,
+            default=["体重 (kg)", "体脂肪率 (%)"],
+            help="グラフにプロットする体組成指標を選択してください。2項目選択時は左右2軸表示になります。",
         )
-        st.plotly_chart(trend_fig, width="stretch")
-    else:
-        st.info("表示する指標を1つ以上選択してください。")
+        if selected_metrics:
+            trend_fig = create_trend_chart(
+                filtered_df,
+                selected_metrics,
+                show_ma=show_ma,
+                ma_window=ma_window,
+            )
+            st.plotly_chart(trend_fig, width="stretch")
+        else:
+            st.info("表示する指標を1つ以上選択してください。")
 
 
+@st.fragment
 def render_segmental_tab(filtered_df: pd.DataFrame, latest_row: pd.Series[Any]) -> None:
     """Render Tab 2 for KRD-703T segmental skeletal muscle and fat analysis.
 
@@ -287,72 +300,76 @@ def render_segmental_tab(filtered_df: pd.DataFrame, latest_row: pd.Series[Any]) 
         filtered_df: Filtered measurement DataFrame.
         latest_row: Latest measurement record Series.
     """
-    st.markdown("#### 部位別骨格筋・皮下脂肪バランス分析")
-    sub_col1, sub_col2 = st.columns([1, 1])
+    with st.container(border=True):
+        st.markdown("#### 部位別骨格筋・皮下脂肪バランス分析")
+        sub_col1, sub_col2 = st.columns([1, 1])
 
-    with sub_col1:
-        st.markdown("##### 最新測定の部位別レーダー")
-        radar_fig = create_segmental_radar_chart(
-            muscle_arms=float(str(latest_row.get("skeletal_muscle_arms_pct", 0.0) or 0.0)),
-            muscle_trunk=float(str(latest_row.get("skeletal_muscle_trunk_pct", 0.0) or 0.0)),
-            muscle_legs=float(str(latest_row.get("skeletal_muscle_legs_pct", 0.0) or 0.0)),
-            fat_arms=float(str(latest_row.get("subcutaneous_fat_arms_pct", 0.0) or 0.0)),
-            fat_trunk=float(str(latest_row.get("subcutaneous_fat_trunk_pct", 0.0) or 0.0)),
-            fat_legs=float(str(latest_row.get("subcutaneous_fat_legs_pct", 0.0) or 0.0)),
-        )
-        st.plotly_chart(radar_fig, width="stretch")
+        with sub_col1:
+            st.markdown("##### 最新測定の部位別レーダー")
+            radar_fig = create_segmental_radar_chart(
+                muscle_arms=float(str(latest_row.get("skeletal_muscle_arms_pct", 0.0) or 0.0)),
+                muscle_trunk=float(str(latest_row.get("skeletal_muscle_trunk_pct", 0.0) or 0.0)),
+                muscle_legs=float(str(latest_row.get("skeletal_muscle_legs_pct", 0.0) or 0.0)),
+                fat_arms=float(str(latest_row.get("subcutaneous_fat_arms_pct", 0.0) or 0.0)),
+                fat_trunk=float(str(latest_row.get("subcutaneous_fat_trunk_pct", 0.0) or 0.0)),
+                fat_legs=float(str(latest_row.get("subcutaneous_fat_legs_pct", 0.0) or 0.0)),
+            )
+            st.plotly_chart(radar_fig, width="stretch")
 
-    with sub_col2:
-        segment_summary = pd.DataFrame(
-            {
-                "部位": ["両腕", "体幹", "両脚"],
-                "骨格筋率 (%)": [
-                    latest_row.get("skeletal_muscle_arms_pct"),
-                    latest_row.get("skeletal_muscle_trunk_pct"),
-                    latest_row.get("skeletal_muscle_legs_pct"),
-                ],
-                "皮下脂肪率 (%)": [
-                    latest_row.get("subcutaneous_fat_arms_pct"),
-                    latest_row.get("subcutaneous_fat_trunk_pct"),
-                    latest_row.get("subcutaneous_fat_legs_pct"),
-                ],
-            }
-        )
-        st.markdown("##### 部位別の最新数値")
-        st.dataframe(segment_summary, width="stretch", hide_index=True)
+        with sub_col2:
+            segment_summary = pd.DataFrame(
+                {
+                    "部位": ["両腕", "体幹", "両脚"],
+                    "骨格筋率 (%)": [
+                        latest_row.get("skeletal_muscle_arms_pct"),
+                        latest_row.get("skeletal_muscle_trunk_pct"),
+                        latest_row.get("skeletal_muscle_legs_pct"),
+                    ],
+                    "皮下脂肪率 (%)": [
+                        latest_row.get("subcutaneous_fat_arms_pct"),
+                        latest_row.get("subcutaneous_fat_trunk_pct"),
+                        latest_row.get("subcutaneous_fat_legs_pct"),
+                    ],
+                }
+            )
+            st.markdown("##### 部位別の最新数値")
+            st.dataframe(segment_summary, width="stretch", hide_index=True)
 
-    st.divider()
-    st.markdown("##### 部位別推移グラフ")
-    hist_col1, hist_col2 = st.columns(2)
-    with hist_col1:
-        muscle_hist_fig = create_segmental_history_chart(
-            filtered_df, "skeletal_muscle", "部位別 骨格筋率の推移 (%)"
-        )
-        st.plotly_chart(muscle_hist_fig, width="stretch")
+    with st.container(border=True):
+        st.markdown("##### 部位別推移グラフ")
+        hist_col1, hist_col2 = st.columns(2)
+        with hist_col1:
+            muscle_hist_fig = create_segmental_history_chart(
+                filtered_df, "skeletal_muscle", "部位別 骨格筋率の推移 (%)"
+            )
+            st.plotly_chart(muscle_hist_fig, width="stretch")
 
-    with hist_col2:
-        fat_hist_fig = create_segmental_history_chart(
-            filtered_df, "subcutaneous_fat", "部位別 皮下脂肪率の推移 (%)"
-        )
-        st.plotly_chart(fat_hist_fig, width="stretch")
+        with hist_col2:
+            fat_hist_fig = create_segmental_history_chart(
+                filtered_df, "subcutaneous_fat", "部位別 皮下脂肪率の推移 (%)"
+            )
+            st.plotly_chart(fat_hist_fig, width="stretch")
 
 
+@st.fragment
 def render_composition_tab(filtered_df: pd.DataFrame) -> None:
     """Render Tab 3 for body composition breakdown stack and correlation scatter.
 
     Args:
         filtered_df: Filtered measurement DataFrame.
     """
-    st.markdown("#### 体組成の内訳および相関")
-    stack_fig = create_composition_stack_chart(filtered_df)
-    st.plotly_chart(stack_fig, width="stretch")
+    with st.container(border=True):
+        st.markdown("#### 体組成の内訳および相関")
+        stack_fig = create_composition_stack_chart(filtered_df)
+        st.plotly_chart(stack_fig, width="stretch")
 
-    st.divider()
-    st.markdown("##### 体重 vs 体脂肪率 の散布図 (体型変化トラッキング)")
-    scatter_fig = create_scatter_correlation_chart(filtered_df)
-    st.plotly_chart(scatter_fig, width="stretch")
+    with st.container(border=True):
+        st.markdown("##### 体重 vs 体脂肪率 の散布図 (体型変化トラッキング)")
+        scatter_fig = create_scatter_correlation_chart(filtered_df)
+        st.plotly_chart(scatter_fig, width="stretch")
 
 
+@st.fragment
 def render_management_tab(filtered_df: pd.DataFrame, db_path: Path) -> None:
     """Render Tab 4 for raw measurement log tables, export, and fail-safe DB clear.
 
@@ -360,54 +377,59 @@ def render_management_tab(filtered_df: pd.DataFrame, db_path: Path) -> None:
         filtered_df: Filtered measurement DataFrame.
         db_path: Deterministic Path to SQLite database.
     """
-    st.markdown("#### 測定ログ一覧")
-    st.dataframe(
-        filtered_df.sort_values(by="measured_at", ascending=False),
-        width="stretch",
-        hide_index=True,
-    )
-
-    st.markdown("##### 統計サマリー (基本統計量)")
-    st.dataframe(filtered_df.describe().T, width="stretch")
-
-    st.markdown("##### データエクスポート")
-    csv_buffer = filtered_df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        label="💾 表示中データをCSVエクスポート",
-        data=csv_buffer,
-        file_name="krd703t_filtered_measurements.csv",
-        mime="text/csv",
-        type="secondary",
-        width="stretch",
-        help="現在画面にフィルタ表示されている測定レコードをCSVファイルとしてダウンロードします。",
-    )
-
-    st.divider()
-    st.markdown("##### データベース管理")
-    with st.expander("⚙️ データベース初期化 (全データ消去)", expanded=False):
-        st.warning("⚠️ SQLiteデータベース内の全測定レコードが完全に削除されます。")
-        confirmed = st.checkbox(
-            "全測定データの完全消去を確認しました",
-            help="チェックを入れるとデータベース消去ボタンが有効化されます。",
-        )
-        if st.button(
-            "🗑️ 全データを消去して初期化",
-            type="secondary",
-            disabled=not confirmed,
+    with st.container(border=True):
+        st.markdown("#### 測定ログ一覧")
+        st.dataframe(
+            filtered_df.sort_values(by="measured_at", ascending=False),
             width="stretch",
-            help="データベースを完全にクリアし、初期状態に戻します（復元不可）。",
-        ):
-            clear_db(db_path)
-            get_cached_measurements.clear()
-            st.success("データベースを初期化しました。")
-            st.rerun()
+            hide_index=True,
+        )
+
+    with st.container(border=True):
+        st.markdown("##### 統計サマリー (基本統計量)")
+        st.dataframe(filtered_df.describe().T, width="stretch")
+
+    with st.container(border=True):
+        st.markdown("##### データエクスポート")
+        csv_buffer = filtered_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="表示中データをCSVエクスポート",
+            icon=":material/download:",
+            data=csv_buffer,
+            file_name="krd703t_filtered_measurements.csv",
+            mime="text/csv",
+            type="secondary",
+            width="stretch",
+            help="現在画面にフィルタ表示されている測定レコードをCSVファイルとしてダウンロードします。",
+        )
+
+    with st.container(border=True):
+        st.markdown("##### データベース管理")
+        with st.popover("データベース初期化 (全データ消去)", icon=":material/delete_forever:"):
+            st.warning("SQLiteデータベース内の全測定レコードが完全に削除されます。")
+            confirmed = st.checkbox(
+                "全測定データの完全消去を確認しました",
+                help="チェックを入れるとデータベース消去ボタンが有効化されます。",
+            )
+            if st.button(
+                "全データを消去して初期化",
+                icon=":material/delete_forever:",
+                type="secondary",
+                disabled=not confirmed,
+                width="stretch",
+                help="データベースを完全にクリアし、初期状態に戻します（復元不可）。",
+            ):
+                clear_db(db_path)
+                get_cached_measurements.clear()
+                st.toast("データベースを初期化しました。", icon=":material/check_circle:")
+                st.rerun()
 
 
 def main() -> None:
     """Launch and orchestrate the Streamlit dashboard application."""
     st.set_page_config(
         page_title="オムロン KRD-703T 体組成ダッシュボード",
-        page_icon="⚖️",
+        page_icon=":material/monitor_heart:",
         layout="wide",
     )
 
@@ -428,15 +450,23 @@ def main() -> None:
     min_date = df["measured_at"].min().date()
     max_date = df["measured_at"].max().date()
 
-    # Section 1: Incremental CSV synchronization (Expander + Form)
-    with st.expander("📥 測定データ（CSV）の同期・追加投入", expanded=False):
-        with st.form("incremental_upload_form", clear_on_submit=True):
+    # Section 1: Compact CSV Synchronization Toolbar Popover
+    with (
+        st.container(horizontal=True, horizontal_alignment="right"),
+        st.popover("CSVデータ追加同期", icon=":material/sync:"),
+    ):
+        with st.form("incremental_upload_form", clear_on_submit=True, border=False):
             inc_file = st.file_uploader(
                 "オムロンのCSVファイルを追加選択",
                 type=["csv"],
                 help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
             )
-            submit_inc = st.form_submit_button("📥 CSVを取り込んで同期", type="secondary")
+            submit_inc = st.form_submit_button(
+                "CSVを取り込んで同期",
+                icon=":material/sync:",
+                type="secondary",
+                width="stretch",
+            )
 
         if submit_inc:
             if not inc_file:
@@ -449,7 +479,10 @@ def main() -> None:
                         if inserted > 0:
                             st.session_state["filter_end_date"] = raw_df["measured_at"].max().date()
                             get_cached_measurements.clear()
-                            st.success(f"同期完了: {inserted} 件の測定ログを新規保存しました。")
+                            st.toast(
+                                f"同期完了: {inserted} 件の測定ログを新規保存しました。",
+                                icon=":material/check_circle:",
+                            )
                             st.rerun()
                         else:
                             st.info(
@@ -477,9 +510,9 @@ def main() -> None:
     st.session_state["filter_start_date"] = max(st.session_state["filter_start_date"], min_date)
     st.session_state["filter_end_date"] = min(st.session_state["filter_end_date"], max_date)
 
-    # Section 2: Filter Controls Form (Resource Optimization)
-    with st.form("filter_controls_form"):
-        st.subheader("🔍 フィルター設定")
+    # Section 2: Filter Controls Form
+    with st.form("filter_controls_form", border=True):
+        st.subheader("フィルター設定")
         f_col1, f_col2, f_col3 = st.columns([2, 1, 1])
 
         with f_col1:
@@ -510,14 +543,16 @@ def main() -> None:
         b_col1, b_col2 = st.columns([1, 1])
         with b_col1:
             submit_filter = st.form_submit_button(
-                "🔍 フィルターを適用",
+                "フィルターを適用",
+                icon=":material/filter_alt:",
                 type="primary",
                 width="stretch",
                 help="指定した期間と移動平均設定を集計に反映します。",
             )
         with b_col2:
             reset_filter = st.form_submit_button(
-                "🔄 期間を全期間にリセット",
+                "期間を全期間にリセット",
+                icon=":material/restart_alt:",
                 type="secondary",
                 width="stretch",
                 help="期間フィルタを全期間、移動平均を初期値（7日）にリセットします。",
@@ -553,10 +588,10 @@ def main() -> None:
     latest_row = filtered_df.iloc[-1]
     tab1, tab2, tab3, tab4 = st.tabs(
         [
-            "📈 トレンド推移",
-            "🦾 部位別バランス (KRD-703T特有)",
-            "📊 体組成構成 & 相関",
-            "📋 測定ログ管理",
+            "トレンド推移",
+            "部位別バランス (KRD-703T特有)",
+            "体組成構成 & 相関",
+            "測定ログ管理",
         ]
     )
 

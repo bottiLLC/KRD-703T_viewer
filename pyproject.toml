@@ -22,7 +22,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["."]
+testpaths = ["tests"]
 addopts = "--cov=db --cov=backup_manager --cov=charts --cov-branch --cov-report=term-missing"
 
 [tool.mypy]

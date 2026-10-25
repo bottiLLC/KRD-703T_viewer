@@ -1,17 +1,78 @@
 === app.py ===
 """Streamlit dashboard for Omron KRD-703T body composition analysis and visualization."""
 from __future__ import annotations
+import datetime
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Final
+import pandas as pd
+import streamlit as st
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+from backup_manager import get_backup_dir, run_backup, set_backup_dir
+from charts import METRIC_LABELS, calculate_delta, create_composition_stack_chart, create_scatter_correlation_chart, create_segmental_history_chart, create_segmental_radar_chart, create_trend_chart
+from db import clear_db, get_default_db_path, init_db, insert_data, load_data, parse_csv_bytes
+@dataclass(frozen=True)
+class FilterCriteria:
+    """Immutable filter state contract."""
+    start_date: datetime.date
+    end_date: datetime.date
+    show_ma: bool
+    ma_window: int
+@st.cache_data
+def get_cached_measurements(db_path_str: str) -> pd.DataFrame:
+    """Load all measurements from SQLite database with Streamlit caching."""
+def render_header() -> None:
+    """Render standardized top-level header zone with title, objective, and version metadata."""
+def render_sidebar() -> None:
+    """Render standardized sidebar zone strictly limited to settings, docs, and metadata."""
+def render_empty_state(db_path: Path) -> None:
+    """Render workspace view when database contains zero measurement records."""
+def render_summary_kpis(filtered_df: pd.DataFrame) -> None:
+    """Render metadata caption and top 6 KPI metric cards."""
+@st.fragment
+def render_trend_tab(filtered_df: pd.DataFrame, show_ma: bool, ma_window: int) -> None:
+    """Render Tab 1 for metric trend waveform and multi-axis visualization."""
+@st.fragment
+def render_segmental_tab(filtered_df: pd.DataFrame, latest_row: pd.Series[Any]) -> None:
+    """Render Tab 2 for KRD-703T segmental skeletal muscle and fat analysis."""
+@st.fragment
+def render_composition_tab(filtered_df: pd.DataFrame) -> None:
+    """Render Tab 3 for body composition breakdown stack and correlation scatter."""
+@st.fragment
+def render_management_tab(filtered_df: pd.DataFrame, db_path: Path) -> None:
+    """Render Tab 4 for raw measurement log tables, export, and fail-safe DB clear."""
+def main() -> None:
+    """Launch and orchestrate the Streamlit dashboard application."""
+
+=== backup_manager.py ===
+from __future__ import annotations
+import json
+import os
+import shutil
+import tempfile
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Final
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+_CONFIG_FILE: Final[Path] = _ROOT / 'data' / 'backup_config.json'
+_DEFAULT_BACKUP_DIR: Final[Path] = _ROOT / 'backups'
+def get_backup_dir() -> Path:
+    """Resolve active backup directory from config, env, or default."""
+def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
+    """Validate and persist target backup directory path."""
+def run_backup(app_name: str='app', source_dir: Path | str | None=None) -> dict[str, str | bool]:
+    """Create atomic, integrity-verified ZIP archive of ./data directory."""
+
+=== charts.py ===
+"""Pure analytical chart generators and transformation primitives for KRD-703T metrics."""
+from __future__ import annotations
 from types import MappingProxyType
 from typing import Final
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit as st
-_APP_ROOT: Final[Path] = Path(__file__).resolve().parent
-from backup_manager import get_backup_dir, run_backup, set_backup_dir
-from db import clear_db, get_default_db_path, init_db, insert_data, load_data, parse_csv_bytes
 METRIC_LABELS: Final[MappingProxyType[str, str]] = MappingProxyType({'体重 (kg)': 'weight', '体脂肪率 (%)': 'body_fat_pct', '体脂肪量 (kg)': 'body_fat_mass', '骨格筋率 (%)': 'skeletal_muscle_pct', '骨格筋量 (kg)': 'skeletal_muscle_mass', '内臓脂肪レベル': 'visceral_fat_level', 'BMI': 'bmi', '基礎代謝 (kcal)': 'bmr', '体年齢 (才)': 'body_age', '骨格筋率・両腕 (%)': 'skeletal_muscle_arms_pct', '骨格筋率・体幹 (%)': 'skeletal_muscle_trunk_pct', '骨格筋率・両脚 (%)': 'skeletal_muscle_legs_pct', '皮下脂肪率・全身 (%)': 'subcutaneous_fat_pct', '皮下脂肪率・両腕 (%)': 'subcutaneous_fat_arms_pct', '皮下脂肪率・体幹 (%)': 'subcutaneous_fat_trunk_pct', '皮下脂肪率・両脚 (%)': 'subcutaneous_fat_legs_pct'})
 METRIC_COLORS: Final[MappingProxyType[str, str]] = MappingProxyType({'weight': '#2563EB', 'body_fat_pct': '#DC2626', 'body_fat_mass': '#EA580C', 'skeletal_muscle_pct': '#16A34A', 'skeletal_muscle_mass': '#059669', 'visceral_fat_level': '#D97706', 'bmi': '#7C3AED', 'bmr': '#0284C7', 'body_age': '#64748B', 'skeletal_muscle_arms_pct': '#3B82F6', 'skeletal_muscle_trunk_pct': '#10B981', 'skeletal_muscle_legs_pct': '#F59E0B', 'subcutaneous_fat_pct': '#E11D48', 'subcutaneous_fat_arms_pct': '#FB7185', 'subcutaneous_fat_trunk_pct': '#F43F5E', 'subcutaneous_fat_legs_pct': '#BE123C'})
 SEGMENT_COLORS: Final[MappingProxyType[str, str]] = MappingProxyType({'両腕': '#3B82F6', '体幹': '#10B981', '両脚': '#F59E0B'})
@@ -25,44 +86,46 @@ def create_segmental_history_chart(df: pd.DataFrame, col_prefix: str, title: str
     """Generate time series comparison of arms, trunk, and legs."""
 def create_composition_stack_chart(df: pd.DataFrame) -> go.Figure:
     """Generate stacked area chart breaking down weight into muscle, fat, and others."""
-def render_backup_sidebar() -> None:
-    """Render standardized data protection backup trigger and receipts in sidebar."""
-def main() -> None:
-    """Launch and orchestrate the Streamlit dashboard application."""
-
-=== backup_manager.py ===
-"""Atomic backup manager with integrity verification for persistent application data."""
-from __future__ import annotations
-import json
-import os
-import shutil
-import tempfile
-import zipfile
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Final
-_CONFIG_FILE: Final[Path] = Path('./data/backup_config.json')
-_DEFAULT_BACKUP_DIR: Final[Path] = Path('./backups')
-def get_backup_dir() -> Path:
-    """Resolve the active backup destination directory."""
-def set_backup_dir(target_dir: str) -> dict[str, str | bool]:
-    """Validate and persist the backup target directory into configuration."""
-def run_backup(app_name: str='app', source_dir: str='./data') -> dict[str, str | bool]:
-    """Execute an atomic, integrity-verified backup of the persistent data directory."""
+def create_scatter_correlation_chart(df: pd.DataFrame) -> go.Figure:
+    """Generate scatter tracking chart between weight and body fat percentage."""
 
 === db.py ===
 """SQLite persistence layer and Omron KRD-703T CSV ingestion engine."""
 from __future__ import annotations
 import io
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 import pandas as pd
-DEFAULT_DATA_DIR: Final[str] = 'data'
-DEFAULT_DB_NAME: Final[str] = 'body_composition_raw.db'
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+DEFAULT_DATA_DIR: Final[Path] = _ROOT / 'data'
+DEFAULT_DB_PATH: Final[Path] = DEFAULT_DATA_DIR / 'body_composition_raw.db'
 COLUMN_MAP: Final[MappingProxyType[str, str]] = MappingProxyType({'測定日': 'measured_at', 'タイムゾーン': 'timezone', '体重(kg)': 'weight', '体脂肪(%)': 'body_fat_pct', '体脂肪量(kg)': 'body_fat_mass', '内臓脂肪レベル': 'visceral_fat_level', '基礎代謝(kcal)': 'bmr', '骨格筋(%)': 'skeletal_muscle_pct', '骨格筋量(kg)': 'skeletal_muscle_mass', '骨格筋率（両腕）(%)': 'skeletal_muscle_arms_pct', '骨格筋率（体幹）(%)': 'skeletal_muscle_trunk_pct', '骨格筋率（両脚）(%)': 'skeletal_muscle_legs_pct', '皮下脂肪率(%)': 'subcutaneous_fat_pct', '皮下脂肪率（両腕）(%)': 'subcutaneous_fat_arms_pct', '皮下脂肪率（体幹）(%)': 'subcutaneous_fat_trunk_pct', '皮下脂肪率（両脚）(%)': 'subcutaneous_fat_legs_pct', 'BMI': 'bmi', '体年齢(才)': 'body_age', '機種': 'device'})
 ALL_COLUMNS: Final[tuple[str, ...]] = ('measured_at', 'timezone', 'weight', 'body_fat_pct', 'body_fat_mass', 'visceral_fat_level', 'bmr', 'skeletal_muscle_pct', 'skeletal_muscle_mass', 'skeletal_muscle_arms_pct', 'skeletal_muscle_trunk_pct', 'skeletal_muscle_legs_pct', 'subcutaneous_fat_pct', 'subcutaneous_fat_arms_pct', 'subcutaneous_fat_trunk_pct', 'subcutaneous_fat_legs_pct', 'bmi', 'body_age', 'device')
+@dataclass(frozen=True)
+class MeasurementRecord:
+    """Immutable data transfer object representing a body composition record."""
+    measured_at: str
+    timezone: str
+    weight: float
+    body_fat_pct: float
+    body_fat_mass: float
+    visceral_fat_level: float
+    bmr: int
+    skeletal_muscle_pct: float
+    skeletal_muscle_mass: float
+    skeletal_muscle_arms_pct: float
+    skeletal_muscle_trunk_pct: float
+    skeletal_muscle_legs_pct: float
+    subcutaneous_fat_pct: float
+    subcutaneous_fat_arms_pct: float
+    subcutaneous_fat_trunk_pct: float
+    subcutaneous_fat_legs_pct: float
+    bmi: float
+    body_age: int
+    device: str
 def get_default_db_path() -> Path:
     """Get deterministic database file path relative to current script inside ./data."""
 def init_db(db_path: Path) -> None:
@@ -76,7 +139,41 @@ def load_data(db_path: Path) -> pd.DataFrame:
 def clear_db(db_path: Path) -> None:
     """Clear all records from the measurements table."""
 
-=== test_backup_manager.py ===
+=== tests/__init__.py ===
+"""Test package for KRD-703T viewer."""
+
+=== tests/test_app.py ===
+"""Unit test suite for Streamlit dashboard application UI contracts and state transitions."""
+from __future__ import annotations
+from pathlib import Path
+from unittest.mock import patch
+import pytest
+from streamlit.testing.v1 import AppTest
+from db import init_db, insert_data, parse_csv_bytes
+_APP_PATH: Path = Path(__file__).resolve().parent.parent / 'app.py'
+_SAMPLE_CSV_HEADER: str = '"測定日","タイムゾーン","体重(kg)","体脂肪(%)","体脂肪量(kg)","内臓脂肪レベル","基礎代謝(kcal)","骨格筋(%)","骨格筋量(kg)","骨格筋率（両腕）(%)","骨格筋率（体幹）(%)","骨格筋率（両脚）(%)","皮下脂肪率(%)","皮下脂肪率（両腕）(%)","皮下脂肪率（体幹）(%)","皮下脂肪率（両脚）(%)","BMI","体年齢(才)","機種"\n'
+_SAMPLE_ROW_1: str = '"2026/07/23 01:06","Asia/Tokyo","67.50","17.3","11.70","6.0","1592","34.6","23.40","39.3","28.8","51.8","12.0","16.5","10.5","15.9","21.8","36","KRD-703T"\n'
+_SAMPLE_ROW_2: str = '"2026/07/24 08:56","Asia/Tokyo","67.20","17.0","11.42","6.0","1588","34.8","23.38","39.5","29.0","52.0","11.8","16.2","10.3","15.6","21.7","36","KRD-703T"\n'
+@pytest.fixture
+def empty_temp_db(tmp_path: Path) -> Path:
+    """Provide an initialized but empty SQLite database."""
+@pytest.fixture
+def populated_temp_db(tmp_path: Path) -> Path:
+    """Provide an SQLite database populated with two sample KRD-703T records."""
+def test_empty_database_renders_initial_upload_and_guide(empty_temp_db: Path) -> None:
+    """Verify that an empty database triggers the initial upload form and guidance."""
+def test_empty_database_initial_upload_empty_submission(empty_temp_db: Path) -> None:
+    """Verify that submitting initial upload form without a file displays an error."""
+def test_populated_database_renders_kpis_and_tabs(populated_temp_db: Path) -> None:
+    """Verify that populated database renders KPI metrics and tabbed analysis views."""
+def test_populated_database_filter_form_reset(populated_temp_db: Path) -> None:
+    """Verify that clicking the filter reset button runs without error."""
+def test_populated_database_incremental_upload_without_file(populated_temp_db: Path) -> None:
+    """Verify incremental sync error does not crash or stop the main dashboard."""
+def test_populated_database_clear_two_step_safety(populated_temp_db: Path) -> None:
+    """Verify that database clear button is disabled until 2-step confirmation checkbox is toggled."""
+
+=== tests/test_backup_manager.py ===
 """Unit test suite for backup manager operations and configuration handling."""
 from __future__ import annotations
 import json
@@ -85,8 +182,12 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 import pytest
+import backup_manager
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
-def test_get_backup_dir_from_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture(autouse=True)
+def setup_backup_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate backup environment to tmp_path for all test cases."""
+def test_get_backup_dir_from_config(tmp_path: Path) -> None:
     """Verify get_backup_dir reads destination from persisted JSON configuration."""
 def test_get_backup_dir_corrupt_config_fallback_to_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify corrupted JSON config falls back gracefully to BACKUP_DIR env var."""
@@ -94,9 +195,9 @@ def test_get_backup_dir_empty_key_fallback_to_default(tmp_path: Path, monkeypatc
     """Verify config missing backup_dir key falls back to default ./backups."""
 def test_get_backup_dir_default_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify default fallback when config does not exist and env var is unset."""
-def test_set_backup_dir_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_backup_dir_success(tmp_path: Path) -> None:
     """Verify set_backup_dir creates directory and persists config JSON."""
-def test_set_backup_dir_oserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_backup_dir_oserror(tmp_path: Path) -> None:
     """Verify set_backup_dir reports failure when directory creation raises OSError."""
 def test_backup_source_dir_not_exists(tmp_path: Path) -> None:
     """Verify backup failure when source directory does not exist."""
@@ -106,14 +207,56 @@ def test_backup_success_with_default_backups_dir(tmp_path: Path, monkeypatch: py
     """Verify successful backup creation and ensure backup_config.json is excluded."""
 def test_backup_success_with_large_payload_mb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify size formatting as MB when payload exceeds 1MB."""
-def test_backup_target_dir_creation_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_backup_target_dir_creation_failure(tmp_path: Path) -> None:
     """Verify graceful error handling when destination directory cannot be created."""
 def test_backup_integrity_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify failure report when testzip integrity check detects corruption."""
 def test_backup_finalize_move_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify graceful error reporting when final shutil.move encounters an OSError."""
 
-=== test_db.py ===
+=== tests/test_charts.py ===
+"""Unit test suite for pure analytical chart generators and transformation primitives."""
+from __future__ import annotations
+import pandas as pd
+import pytest
+from charts import calculate_delta, create_composition_stack_chart, create_scatter_correlation_chart, create_segmental_history_chart, create_segmental_radar_chart, create_trend_chart
+@pytest.fixture
+def sample_measurements_df() -> pd.DataFrame:
+    """Provide structured DataFrame for chart generation tests."""
+def test_calculate_delta_insufficient_or_nan() -> None:
+    """Verify calculate_delta returns None on empty or single-observation series."""
+def test_calculate_delta_success() -> None:
+    """Verify calculate_delta computes correct numerical difference."""
+def test_create_trend_chart_empty_or_no_labels() -> None:
+    """Verify create_trend_chart returns blank figure on empty input."""
+def test_create_trend_chart_single_metric_with_ma(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify create_trend_chart adds primary trace and moving average trace."""
+def test_create_trend_chart_dual_metric_with_ma(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify create_trend_chart adds dual axes and secondary moving average."""
+def test_create_trend_chart_ma_window_exceeds_length(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify moving average is skipped when window exceeds DataFrame row count."""
+def test_create_trend_chart_unknown_columns(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify unknown labels do not generate traces."""
+def test_create_segmental_radar_chart() -> None:
+    """Verify create_segmental_radar_chart generates closed polar traces."""
+def test_create_segmental_history_chart_empty() -> None:
+    """Verify create_segmental_history_chart returns blank figure on empty df."""
+def test_create_segmental_history_chart_success(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify create_segmental_history_chart generates 3 traces for arms, trunk, legs."""
+def test_create_segmental_history_chart_missing_columns() -> None:
+    """Verify create_segmental_history_chart gracefully handles missing segmental columns."""
+def test_create_composition_stack_chart_empty() -> None:
+    """Verify create_composition_stack_chart returns blank figure on empty input."""
+def test_create_composition_stack_chart_success(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify create_composition_stack_chart creates 3 stacked area traces."""
+def test_create_composition_stack_chart_clamped_other_mass() -> None:
+    """Verify other_mass is non-negative even when muscle and fat sum exceeds weight."""
+def test_create_scatter_correlation_chart_empty() -> None:
+    """Verify create_scatter_correlation_chart returns empty figure on empty df."""
+def test_create_scatter_correlation_chart_success(sample_measurements_df: pd.DataFrame) -> None:
+    """Verify create_scatter_correlation_chart creates marker+line scatter plot."""
+
+=== tests/test_db.py ===
 """Unit test suite for SQLite persistence layer and Omron CSV parsing."""
 from __future__ import annotations
 from pathlib import Path

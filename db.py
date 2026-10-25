@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import io
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
 import pandas as pd
 
-DEFAULT_DATA_DIR: Final[str] = "data"
-DEFAULT_DB_NAME: Final[str] = "body_composition_raw.db"
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+DEFAULT_DATA_DIR: Final[Path] = _ROOT / "data"
+DEFAULT_DB_PATH: Final[Path] = DEFAULT_DATA_DIR / "body_composition_raw.db"
 
 COLUMN_MAP: Final[MappingProxyType[str, str]] = MappingProxyType(
     {
@@ -60,15 +62,39 @@ ALL_COLUMNS: Final[tuple[str, ...]] = (
 )
 
 
+@dataclass(frozen=True)
+class MeasurementRecord:
+    """Immutable data transfer object representing a body composition record."""
+
+    measured_at: str
+    timezone: str
+    weight: float
+    body_fat_pct: float
+    body_fat_mass: float
+    visceral_fat_level: float
+    bmr: int
+    skeletal_muscle_pct: float
+    skeletal_muscle_mass: float
+    skeletal_muscle_arms_pct: float
+    skeletal_muscle_trunk_pct: float
+    skeletal_muscle_legs_pct: float
+    subcutaneous_fat_pct: float
+    subcutaneous_fat_arms_pct: float
+    subcutaneous_fat_trunk_pct: float
+    subcutaneous_fat_legs_pct: float
+    bmi: float
+    body_age: int
+    device: str
+
+
 def get_default_db_path() -> Path:
     """Get deterministic database file path relative to current script inside ./data.
 
     Returns:
         Path pointing to default SQLite database within data directory.
     """
-    data_dir = Path(__file__).resolve().parent / DEFAULT_DATA_DIR
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / DEFAULT_DB_NAME
+    DEFAULT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DEFAULT_DB_PATH
 
 
 def init_db(db_path: Path) -> None:
