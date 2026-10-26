@@ -56,12 +56,27 @@ def test_empty_database_renders_sidebar_and_guidance(empty_temp_db: Path) -> Non
     assert len(at.exception) == 0
     assert any("KRD-703T" in t.value for t in at.title)
     assert any("測定データが登録されていません" in info.value for info in at.info)
-    assert any("データ同期 (CSV)" in h.value for h in at.sidebar.header)
+    assert any("CSVデータ追加同期" in sh.value for sh in at.sidebar.subheader)
     assert len(at.sidebar.file_uploader) == 1
+    assert any("CSVを取り込んで同期" in btn.label for btn in at.sidebar.button)
+
+
+def test_sidebar_csv_upload_button_without_file(empty_temp_db: Path) -> None:
+    """Verify clicking sync button in sidebar without a file shows warning."""
+    with patch("db.get_default_db_path", return_value=empty_temp_db):
+        at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
+        at.run()
+
+        sync_btn = next(b for b in at.sidebar.button if "CSVを取り込んで同期" in b.label)
+        sync_btn.click()
+        at.run()
+
+    assert len(at.exception) == 0
+    assert any("追加するCSVファイルを選択してください" in w.value for w in at.sidebar.warning)
 
 
 def test_sidebar_csv_upload_empty_to_populated(empty_temp_db: Path) -> None:
-    """Verify that uploading sample CSV via sidebar populates the database and transitions to dashboard."""
+    """Verify that uploading sample CSV via sidebar populates the database upon button click."""
     sample_file = Path(__file__).resolve().parent.parent / "KRD-703T_sample.csv"
     assert sample_file.exists()
     content = sample_file.read_bytes()
@@ -73,9 +88,11 @@ def test_sidebar_csv_upload_empty_to_populated(empty_temp_db: Path) -> None:
         # Database is initially empty
         assert len(at.metric) == 0
 
-        # Upload via sidebar file_uploader
+        # Upload via sidebar file_uploader and click sync button
         uploader = at.sidebar.file_uploader[0]
         uploader.upload(filename="KRD-703T_sample.csv", content=content)
+        sync_btn = next(b for b in at.sidebar.button if "CSVを取り込んで同期" in b.label)
+        sync_btn.click()
         at.run()
 
     assert len(at.exception) == 0
@@ -96,6 +113,8 @@ def test_sidebar_csv_upload_duplicate_handling(populated_temp_db: Path) -> None:
 
         uploader = at.sidebar.file_uploader[0]
         uploader.upload(filename="duplicate_test.csv", content=csv_bytes)
+        sync_btn = next(b for b in at.sidebar.button if "CSVを取り込んで同期" in b.label)
+        sync_btn.click()
         at.run()
 
     assert len(at.exception) == 0

@@ -74,23 +74,29 @@ def render_sidebar(db_path: Path) -> None:
         db_path: Absolute filesystem path to the SQLite database file.
     """
     with st.sidebar:
-        st.header("データ同期 (CSV)")
-        st.caption("OMRON connect 出力CSVを選択すると即座に解析・登録されます。")
-        uploaded_file = st.file_uploader(
-            "オムロン Connect CSVファイルを選択",
-            type=["csv"],
-            key="sidebar_csv_uploader",
-            help="オムロンConnectアプリから出力されたCSVに対応（UTF-8 / CP932自動判定）",
-        )
-        if uploaded_file is not None:
-            content = uploaded_file.getvalue()
-            file_signature = f"{uploaded_file.name}:{len(content)}"
-            if st.session_state.get("_last_processed_csv") != file_signature:
+        with st.container(border=True):
+            st.subheader("CSVデータ追加同期")
+            uploaded_file = st.file_uploader(
+                "オムロンのCSVファイルを選択",
+                type=["csv"],
+                key="sidebar_csv_uploader",
+                help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
+            )
+            submit_sync = st.button(
+                "CSVを取り込んで同期",
+                icon=":material/sync:",
+                type="primary",
+                width="stretch",
+            )
+
+        if submit_sync:
+            if not uploaded_file:
+                st.warning("追加するCSVファイルを選択してください。")
+            else:
                 with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
                     try:
-                        raw_df = parse_csv_bytes(content)
+                        raw_df = parse_csv_bytes(uploaded_file.getvalue())
                         inserted = insert_data(raw_df, db_path)
-                        st.session_state["_last_processed_csv"] = file_signature
                         if inserted > 0:
                             if "測定日" in raw_df.columns:
                                 parsed_dates = pd.to_datetime(raw_df["測定日"], errors="coerce")

@@ -162,8 +162,10 @@ def populated_temp_db(tmp_path: Path) -> Path:
     """Provide an SQLite database populated with two sample KRD-703T records."""
 def test_empty_database_renders_sidebar_and_guidance(empty_temp_db: Path) -> None:
     """Verify that an empty database triggers sidebar upload guidance and instructions."""
+def test_sidebar_csv_upload_button_without_file(empty_temp_db: Path) -> None:
+    """Verify clicking sync button in sidebar without a file shows warning."""
 def test_sidebar_csv_upload_empty_to_populated(empty_temp_db: Path) -> None:
-    """Verify that uploading sample CSV via sidebar populates the database and transitions to dashboard."""
+    """Verify that uploading sample CSV via sidebar populates the database upon button click."""
 def test_sidebar_csv_upload_duplicate_handling(populated_temp_db: Path) -> None:
     """Verify that uploading already ingested CSV in sidebar displays duplicate record notice."""
 def test_populated_database_clear_two_step_safety(populated_temp_db: Path) -> None:
