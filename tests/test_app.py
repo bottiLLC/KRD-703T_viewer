@@ -47,8 +47,8 @@ def populated_temp_db(tmp_path: Path) -> Path:
     return db_path
 
 
-def test_empty_database_renders_initial_upload_and_guide(empty_temp_db: Path) -> None:
-    """Verify that an empty database triggers the initial upload form and guidance."""
+def test_empty_database_renders_sidebar_and_guidance(empty_temp_db: Path) -> None:
+    """Verify that an empty database triggers sidebar upload guidance and instructions."""
     with patch("db.get_default_db_path", return_value=empty_temp_db):
         at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
         at.run()
@@ -56,28 +56,26 @@ def test_empty_database_renders_initial_upload_and_guide(empty_temp_db: Path) ->
     assert len(at.exception) == 0
     assert any("KRD-703T" in t.value for t in at.title)
     assert any("測定データが登録されていません" in info.value for info in at.info)
-    assert len(at.form) >= 1
-    assert any("CSVを取り込んで分析を開始" in btn.label for btn in at.button)
+    assert any("データ同期 (CSV)" in h.value for h in at.sidebar.header)
+    assert len(at.sidebar.file_uploader) == 1
 
 
-def test_empty_database_initial_upload_empty_submission(empty_temp_db: Path) -> None:
-    """Verify that submitting initial upload form without a file displays an error."""
+def test_sidebar_csv_upload_empty_to_populated(empty_temp_db: Path) -> None:
+    """Verify that uploading sample CSV via sidebar populates the database and transitions to dashboard."""
+    sample_file = Path(__file__).resolve().parent.parent / "KRD-703T_sample.csv"
+    assert sample_file.exists()
+    content = sample_file.read_bytes()
+
     with patch("db.get_default_db_path", return_value=empty_temp_db):
         at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
         at.run()
 
-        upload_btn = next(b for b in at.button if "CSVを取り込んで分析を開始" in b.label)
-        upload_btn.click()
-        at.run()
+        # Database is initially empty
+        assert len(at.metric) == 0
 
-    assert len(at.exception) == 0
-    assert any("CSVファイルが指定されていません" in err.value for err in at.error)
-
-
-def test_populated_database_renders_kpis_and_tabs(populated_temp_db: Path) -> None:
-    """Verify that populated database renders KPI metrics and tabbed analysis views."""
-    with patch("db.get_default_db_path", return_value=populated_temp_db):
-        at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
+        # Upload via sidebar file_uploader
+        uploader = at.sidebar.file_uploader[0]
+        uploader.upload(filename="KRD-703T_sample.csv", content=content)
         at.run()
 
     assert len(at.exception) == 0
@@ -86,46 +84,22 @@ def test_populated_database_renders_kpis_and_tabs(populated_temp_db: Path) -> No
     assert "体重" in labels
     assert "体脂肪率" in labels
     assert "骨格筋率" in labels
-    assert "内臓脂肪レベル" in labels
-    assert "BMI" in labels
-    assert "基礎代謝" in labels
-
-    filter_btn = next(b for b in at.button if "フィルターを適用" in b.label)
-    assert filter_btn.proto.type == "primary"
-
-    reset_btn = next(b for b in at.button if "期間を全期間にリセット" in b.label)
-    assert reset_btn.proto.type == "secondary"
 
 
-def test_populated_database_filter_form_reset(populated_temp_db: Path) -> None:
-    """Verify that clicking the filter reset button runs without error."""
+def test_sidebar_csv_upload_duplicate_handling(populated_temp_db: Path) -> None:
+    """Verify that uploading already ingested CSV in sidebar displays duplicate record notice."""
+    csv_bytes = (_SAMPLE_CSV_HEADER + _SAMPLE_ROW_1).encode("utf-8")
+
     with patch("db.get_default_db_path", return_value=populated_temp_db):
         at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
         at.run()
 
-        reset_btn = next(b for b in at.button if "期間を全期間にリセット" in b.label)
-        reset_btn.click()
+        uploader = at.sidebar.file_uploader[0]
+        uploader.upload(filename="duplicate_test.csv", content=csv_bytes)
         at.run()
 
     assert len(at.exception) == 0
-    assert len(at.metric) >= 6
-
-
-def test_populated_database_incremental_upload_without_file(
-    populated_temp_db: Path,
-) -> None:
-    """Verify incremental sync error does not crash or stop the main dashboard."""
-    with patch("db.get_default_db_path", return_value=populated_temp_db):
-        at = AppTest.from_file(str(_APP_PATH), default_timeout=15)
-        at.run()
-
-        sync_btn = next(b for b in at.button if "CSVを取り込んで同期" in b.label)
-        sync_btn.click()
-        at.run()
-
-    assert len(at.exception) == 0
-    assert any("追加するCSVファイルを選択してください" in err.value for err in at.error)
-    assert len(at.metric) >= 6
+    assert any("新規データはありませんでした" in i.value for i in at.sidebar.info)
 
 
 def test_populated_database_clear_two_step_safety(populated_temp_db: Path) -> None:

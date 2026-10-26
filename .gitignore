@@ -13,6 +13,7 @@ wheels/
 *.db
 *.sqlite3
 *.csv
+!KRD-703T_sample.csv
 backups/
 data/
 *.zip

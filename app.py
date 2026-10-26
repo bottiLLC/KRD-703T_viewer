@@ -67,11 +67,56 @@ def render_header() -> None:
     )
 
 
-def render_sidebar() -> None:
-    """Render standardized sidebar zone strictly limited to settings, docs, and metadata."""
+def render_sidebar(db_path: Path) -> None:
+    """Render standardized sidebar zone including instant CSV synchronization, settings, and backup UI.
+
+    Args:
+        db_path: Absolute filesystem path to the SQLite database file.
+    """
     with st.sidebar:
-        st.header("システム設定")
+        st.header("データ同期 (CSV)")
+        st.caption("OMRON connect 出力CSVを選択すると即座に解析・登録されます。")
+        uploaded_file = st.file_uploader(
+            "オムロン Connect CSVファイルを選択",
+            type=["csv"],
+            key="sidebar_csv_uploader",
+            help="オムロンConnectアプリから出力されたCSVに対応（UTF-8 / CP932自動判定）",
+        )
+        if uploaded_file is not None:
+            content = uploaded_file.getvalue()
+            file_signature = f"{uploaded_file.name}:{len(content)}"
+            if st.session_state.get("_last_processed_csv") != file_signature:
+                with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
+                    try:
+                        raw_df = parse_csv_bytes(content)
+                        inserted = insert_data(raw_df, db_path)
+                        st.session_state["_last_processed_csv"] = file_signature
+                        if inserted > 0:
+                            if "測定日" in raw_df.columns:
+                                parsed_dates = pd.to_datetime(raw_df["測定日"], errors="coerce")
+                                max_dt = parsed_dates.dropna().max()
+                                if pd.notnull(max_dt):
+                                    st.session_state["filter_end_date"] = max_dt.date()
+                            get_cached_measurements.clear()
+                            st.toast(
+                                f"同期完了: {inserted} 件の測定ログを新規保存しました。",
+                                icon=":material/check_circle:",
+                            )
+                            st.rerun()
+                        else:
+                            st.info(
+                                "新規データはありませんでした（全件登録済みの重複レコードです）。"
+                            )
+                    except (ValueError, KeyError) as exc:
+                        st.error(
+                            f"取り込みエラー: {exc}\n\n"
+                            "【解決手順】\n"
+                            "1. オムロンConnectから出力した未加工CSVであることを確認してください。\n"
+                            "2. ヘッダー行に「測定日」および「体重(kg)」が存在するか確認してください。"
+                        )
+
         st.divider()
+        st.header("システム設定")
         st.subheader("データ保護・バックアップ")
         current_dir = str(get_backup_dir())
         new_dir = st.text_input("保存先フォルダ", value=current_dir)
@@ -112,7 +157,7 @@ def render_sidebar() -> None:
                 """
                 1. スマートフォンで「OMRON connect」アプリを開く。
                 2. メニューから「データ出力 / CSV」を選択。
-                3. 出力したCSVを本アプリの「データ同期」から投入してください。
+                3. 出力したCSVを左サイドバーの「データ同期」へ投入してください。
                 """
             )
 
@@ -120,66 +165,20 @@ def render_sidebar() -> None:
         st.caption("v1.0.0 | SQLite 3 Engine | KRD-703T DX Analytics")
 
 
-def render_empty_state(db_path: Path) -> None:
-    """Render workspace view when database contains zero measurement records.
-
-    Args:
-        db_path: Path to SQLite database file.
-    """
+def render_empty_state() -> None:
+    """Render workspace view when database contains zero measurement records."""
     st.info(
-        "測定データが登録されていません。オムロン Connect アプリから出力したCSVファイルを投入してください。"
+        "測定データが登録されていません。左サイドバーの「データ同期 (CSV)」からオムロン Connect のCSVファイルを投入してください。"
     )
 
-    with st.form("initial_upload_form", clear_on_submit=False, border=True):
-        st.subheader("1. 測定データ（CSV）の初期投入")
-        uploaded_file = st.file_uploader(
-            "オムロン Connect 出力 CSV ファイルを選択",
-            type=["csv"],
-            help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
-        )
-        submit = st.form_submit_button(
-            "CSVを取り込んで分析を開始",
-            icon=":material/upload_file:",
-            type="primary",
-            width="stretch",
-        )
-
-    if submit:
-        if not uploaded_file:
-            st.error("エラー: CSVファイルが指定されていません。ファイルを選択してください。")
-            st.stop()
-
-        with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
-            content = uploaded_file.read()
-            try:
-                raw_df = parse_csv_bytes(content)
-                inserted = insert_data(raw_df, db_path)
-                get_cached_measurements.clear()
-                if inserted > 0:
-                    st.toast(
-                        f"初期データ取り込み完了: {inserted} 件の測定ログを登録しました。",
-                        icon=":material/check_circle:",
-                    )
-                    st.rerun()
-                else:
-                    st.warning("CSVファイル内に有効な測定ログが存在しませんでした。")
-            except (ValueError, KeyError) as exc:
-                st.error(
-                    f"取り込みエラー: {exc}\n\n"
-                    "【解決手順】\n"
-                    "1. オムロンConnectから出力した未加工CSVであることを確認してください。\n"
-                    "2. ファイルヘッダーに「測定日」および「体重(kg)」列が含まれるか確認してください。\n"
-                    "3. ファイルエンコーディングが UTF-8 または Shift-JIS (CP932) であることを確認してください。"
-                )
-                st.stop()
-
-    with st.popover("オムロン Connect からのデータ出力方法", icon=":material/help:"):
+    with st.container(border=True):
+        st.subheader("💡 測定データの初期登録手順")
         st.markdown(
             """
             1. お手持ちのスマートフォンで **OMRON connect** アプリを起動します。
-            2. 画面右上のメニューまたは設定から **[データ出力]** または **[CSVファイル書き出し]** をタップします。
-            3. 出力期間（全期間推奨）を選択し、メールやAirDrop・クラウド経由でPCへ送信します。
-            4. 送信されたCSVファイルを上記のフォームから選択して投入してください。
+            2. 画面メニューから **[データ出力]** または **[CSVファイル書き出し]** を選択します。
+            3. 出力した未加工CSVファイルを、画面左側のサイドバーにある **「オムロン Connect CSVファイルを選択」** にドラッグ＆ドロップまたは選択してください。
+            4. 投入後、自動で解析・データベース登録が実行され、ダッシュボードが表示されます。
             """
         )
 
@@ -433,68 +432,22 @@ def main() -> None:
         layout="wide",
     )
 
-    render_header()
-    render_sidebar()
-
     db_path = get_default_db_path()
     init_db(db_path)
+
+    render_header()
+    render_sidebar(db_path)
 
     df = get_cached_measurements(str(db_path))
 
     # Empty Database State
     if df.empty:
-        render_empty_state(db_path)
+        render_empty_state()
         st.stop()
 
     # Populated Database State
     min_date = df["measured_at"].min().date()
     max_date = df["measured_at"].max().date()
-
-    # Section 1: Compact CSV Synchronization Toolbar Popover
-    with (
-        st.container(horizontal=True, horizontal_alignment="right"),
-        st.popover("CSVデータ追加同期", icon=":material/sync:"),
-    ):
-        with st.form("incremental_upload_form", clear_on_submit=True, border=False):
-            inc_file = st.file_uploader(
-                "オムロンのCSVファイルを追加選択",
-                type=["csv"],
-                help="オムロンConnectアプリ等から出力されたCSVに対応（UTF-8 / CP932自動判定）",
-            )
-            submit_inc = st.form_submit_button(
-                "CSVを取り込んで同期",
-                icon=":material/sync:",
-                type="secondary",
-                width="stretch",
-            )
-
-        if submit_inc:
-            if not inc_file:
-                st.error("エラー: 追加するCSVファイルを選択してください。")
-            else:
-                with st.spinner("CSVデータを解析しSQLiteデータベースに格納中..."):
-                    try:
-                        raw_df = parse_csv_bytes(inc_file.read())
-                        inserted = insert_data(raw_df, db_path)
-                        if inserted > 0:
-                            st.session_state["filter_end_date"] = raw_df["measured_at"].max().date()
-                            get_cached_measurements.clear()
-                            st.toast(
-                                f"同期完了: {inserted} 件の測定ログを新規保存しました。",
-                                icon=":material/check_circle:",
-                            )
-                            st.rerun()
-                        else:
-                            st.info(
-                                "新規データはありませんでした（全件登録済みの重複レコードです）。"
-                            )
-                    except (ValueError, KeyError) as exc:
-                        st.error(
-                            f"取り込みエラー: {exc}\n\n"
-                            "【解決手順】\n"
-                            "1. オムロンConnectから出力した未加工CSVであることを確認してください。\n"
-                            "2. ヘッダー行に「測定日」および「体重(kg)」が存在するか確認してください。"
-                        )
 
     # Initialize filter state
     if "filter_start_date" not in st.session_state:

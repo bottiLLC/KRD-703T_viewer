@@ -24,9 +24,9 @@ def get_cached_measurements(db_path_str: str) -> pd.DataFrame:
     """Load all measurements from SQLite database with Streamlit caching."""
 def render_header() -> None:
     """Render standardized top-level header zone with title, objective, and version metadata."""
-def render_sidebar() -> None:
-    """Render standardized sidebar zone strictly limited to settings, docs, and metadata."""
-def render_empty_state(db_path: Path) -> None:
+def render_sidebar(db_path: Path) -> None:
+    """Render standardized sidebar zone including instant CSV synchronization, settings, and backup UI."""
+def render_empty_state() -> None:
     """Render workspace view when database contains zero measurement records."""
 def render_summary_kpis(filtered_df: pd.DataFrame) -> None:
     """Render metadata caption and top 6 KPI metric cards."""
@@ -160,16 +160,12 @@ def empty_temp_db(tmp_path: Path) -> Path:
 @pytest.fixture
 def populated_temp_db(tmp_path: Path) -> Path:
     """Provide an SQLite database populated with two sample KRD-703T records."""
-def test_empty_database_renders_initial_upload_and_guide(empty_temp_db: Path) -> None:
-    """Verify that an empty database triggers the initial upload form and guidance."""
-def test_empty_database_initial_upload_empty_submission(empty_temp_db: Path) -> None:
-    """Verify that submitting initial upload form without a file displays an error."""
-def test_populated_database_renders_kpis_and_tabs(populated_temp_db: Path) -> None:
-    """Verify that populated database renders KPI metrics and tabbed analysis views."""
-def test_populated_database_filter_form_reset(populated_temp_db: Path) -> None:
-    """Verify that clicking the filter reset button runs without error."""
-def test_populated_database_incremental_upload_without_file(populated_temp_db: Path) -> None:
-    """Verify incremental sync error does not crash or stop the main dashboard."""
+def test_empty_database_renders_sidebar_and_guidance(empty_temp_db: Path) -> None:
+    """Verify that an empty database triggers sidebar upload guidance and instructions."""
+def test_sidebar_csv_upload_empty_to_populated(empty_temp_db: Path) -> None:
+    """Verify that uploading sample CSV via sidebar populates the database and transitions to dashboard."""
+def test_sidebar_csv_upload_duplicate_handling(populated_temp_db: Path) -> None:
+    """Verify that uploading already ingested CSV in sidebar displays duplicate record notice."""
 def test_populated_database_clear_two_step_safety(populated_temp_db: Path) -> None:
     """Verify that database clear button is disabled until 2-step confirmation checkbox is toggled."""
 
@@ -286,4 +282,6 @@ def test_clear_db(temp_db_path: Path) -> None:
     """Verify clear_db empties the table."""
 def test_krd_csv_ingestion(temp_db_path: Path) -> None:
     """Verify ingesting full-specification Omron KRD-703T CSV payload."""
+def test_krd_703t_sample_csv_exact_file_import(temp_db_path: Path) -> None:
+    """Verify that actual KRD-703T_sample.csv imports with 100% layout and column fidelity."""
 

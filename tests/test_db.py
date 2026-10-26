@@ -130,3 +130,22 @@ def test_krd_csv_ingestion(temp_db_path: Path) -> None:
     assert loaded.iloc[0]["skeletal_muscle_arms_pct"] == 39.3
     assert loaded.iloc[0]["subcutaneous_fat_legs_pct"] == 15.9
     assert loaded.iloc[0]["device"] == "KRD-703T"
+
+
+def test_krd_703t_sample_csv_exact_file_import(temp_db_path: Path) -> None:
+    """Verify that actual KRD-703T_sample.csv imports with 100% layout and column fidelity."""
+    sample_file = Path(__file__).resolve().parent.parent / "KRD-703T_sample.csv"
+    assert sample_file.exists(), f"Sample file not found at {sample_file}"
+
+    sample_bytes = sample_file.read_bytes()
+    raw_df = parse_csv_bytes(sample_bytes)
+    assert len(raw_df) == 58
+
+    inserted_count = insert_data(raw_df, temp_db_path)
+    assert inserted_count == 57  # 1 duplicate row excluded
+
+    loaded = load_data(temp_db_path)
+    assert len(loaded) == 57
+    assert loaded["measured_at"].isnull().sum() == 0
+    assert loaded["weight"].isnull().sum() == 0
+    assert (loaded["device"] == "KRD-703T").all()
